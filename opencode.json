@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "CONTRIBUTING.md"
+  ],
+  "formatter": {
+    "dart-format": {
+      "command": ["dart", "format", "$FILE"],
+      "extensions": [".dart"]
+    }
+  },
+  "command": {
+    "test": {
+      "template": "Run the full Flutter test suite with coverage.\n!`flutter test --coverage`\nAnalyze results and suggest fixes for any failures.",
+      "description": "Run Flutter tests with coverage"
+    },
+    "build": {
+      "template": "Build the Flutter app for Android.\n!`flutter build apk --release`\nReport the result and any errors encountered.",
+      "description": "Build release APK"
+    },
+    "analyze": {
+      "template": "Run Flutter static analysis on the codebase.\n!`flutter analyze`\nList all issues found and suggest fixes for each.",
+      "description": "Analyze code for issues"
+    },
+    "fix": {
+      "template": "Apply automatic fixes and format the codebase.\n!`dart fix --apply`\n!`dart format .`\nReport what was changed.",
+      "description": "Auto-fix and format code"
+    },
+    "clean": {
+      "template": "Clean the Flutter project and rebuild dependencies.\n!`flutter clean && flutter pub get`\nReport the result.",
+      "description": "Clean and reinstall dependencies"
+    },
+    "check": {
+      "template": "Run a full health check on the project.\n!`flutter doctor -v`\n!`flutter pub outdated`\n!`flutter analyze`\nSummarize the project health status.",
+      "description": "Full project health check"
+    }
+  }
+}
