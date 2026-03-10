@@ -57,7 +57,35 @@ class MessageBubble extends StatelessWidget {
                       : const Radius.circular(18),
                 ),
               ),
-              child: _buildContent(context, text, isUser, theme),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildContent(context, text, isUser, theme),
+                  if (!isUser &&
+                      message.status == MessageStatus.sent &&
+                      message.tokenUsage != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.token,
+                          size: 12,
+                          color: theme.colorScheme.outline,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${message.tokenUsage!.total} tokens',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           if (isUser) ...[

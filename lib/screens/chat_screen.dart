@@ -6,6 +6,7 @@ import '../models/provider_model.dart';
 import '../providers/chat_provider.dart';
 import '../providers/conversation_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/provider_registry.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/message_bubble.dart';
@@ -31,12 +32,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     var activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) {
       final settings = ref.read(settingsProvider);
-      final conv = await ref
-          .read(conversationsProvider.notifier)
-          .createConversation(
-            title: 'New Chat',
-            modelId: settings.defaultModelId,
-          );
+      final conv =
+          await ref.read(conversationsProvider.notifier).createConversation(
+                title: 'New Chat',
+                modelId: settings.defaultModelId,
+              );
       if (mounted) {
         ref.read(activeConversationIdProvider.notifier).state = conv.id;
       }
@@ -113,15 +113,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? _EmptyState(onSendSample: (text) async {
                     final convId = await _ensureConversation();
                     if (mounted) {
-                      ref
-                          .read(chatProvider.notifier)
-                          .sendMessage(text, convId);
+                      ref.read(chatProvider.notifier).sendMessage(text, convId);
                     }
                   })
                 : _MessageList(
                     messages: messages,
                     chatState: chatState,
                     scrollController: _scrollController,
+                    showMarkdown: ref.watch(settingsProvider).markdownEnabled,
                   ),
           ),
           ChatInput(
@@ -134,6 +133,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isStreaming: chatState.status == ChatStatus.streaming,
             enabled: chatState.status == ChatStatus.idle ||
                 chatState.status == ChatStatus.error,
+            onStop: () => ref.read(chatProvider.notifier).stopGeneration(),
           ),
         ],
       ),
@@ -152,11 +152,13 @@ class _MessageList extends StatelessWidget {
   final List<Message> messages;
   final ChatState chatState;
   final ScrollController scrollController;
+  final bool showMarkdown;
 
   const _MessageList({
     required this.messages,
     required this.chatState,
     required this.scrollController,
+    this.showMarkdown = true,
   });
 
   @override
@@ -174,6 +176,7 @@ class _MessageList extends StatelessWidget {
         return MessageBubble(
           key: ValueKey(msg.id),
           message: msg,
+          showMarkdown: showMarkdown,
           streamingOverride: isLastAssistant ? chatState.streamingText : null,
         );
       },
@@ -242,15 +245,26 @@ class _EmptyState extends StatelessWidget {
 class _ModelPickerSheet extends ConsumerWidget {
   const _ModelPickerSheet();
 
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chatState = ref.watch(chatProvider);
     final registry = ref.read(providerRegistryProvider);
+    final theme = Theme.of(context);
 
     return FutureBuilder<List<AiModel>>(
       future: registry.getAllModels(),
       builder: (context, snapshot) {
         final models = snapshot.data ?? [];
+
+        // Group models by providerId, preserving insertion order.
+        final grouped = <String, List<AiModel>>{};
+        for (final model in models) {
+          grouped.putIfAbsent(model.providerId, () => []).add(model);
+        }
+
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -260,35 +274,99 @@ class _ModelPickerSheet extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Select Model',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: theme.textTheme.titleLarge,
                 ),
               ),
               const Divider(height: 1),
-              ...models.map(
-                (model) => ListTile(
-                  leading: const Icon(Icons.memory_outlined),
-                  title: Text(model.displayName),
-                  subtitle: Text(model.providerId),
-                  trailing: model.qualifiedId == chatState.selectedModelId
-                      ? const Icon(Icons.check_circle_rounded)
-                      : null,
-                  onTap: () {
-                    ref
-                        .read(chatProvider.notifier)
-                        .selectModel(model.qualifiedId);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
               if (models.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text('No models available'),
+                )
+              else
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final entry in grouped.entries) ...[
+                        // Provider header row
+                        _ProviderHeader(
+                          providerId: entry.key,
+                          label: _capitalize(entry.key),
+                          registry: registry,
+                          theme: theme,
+                        ),
+                        // Model tiles for this provider
+                        for (final model in entry.value)
+                          ListTile(
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
+                            leading: const Icon(Icons.memory_outlined),
+                            title: Text(model.displayName),
+                            trailing:
+                                model.qualifiedId == chatState.selectedModelId
+                                    ? const Icon(Icons.check_circle_rounded)
+                                    : null,
+                            onTap: () {
+                              ref
+                                  .read(chatProvider.notifier)
+                                  .selectModel(model.qualifiedId);
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                      ],
+                    ],
+                  ),
                 ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Header row shown once per provider group in [_ModelPickerSheet].
+class _ProviderHeader extends StatelessWidget {
+  final String providerId;
+  final String label;
+  final ProviderRegistry registry;
+  final ThemeData theme;
+
+  const _ProviderHeader({
+    required this.providerId,
+    required this.label,
+    required this.registry,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Use a representative qualified ID to look up provider status.
+    final provider = registry.getProvider(providerId);
+    final isReady = provider?.currentStatus == ProviderStatus.ready;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isReady ? Colors.green : theme.colorScheme.outlineVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

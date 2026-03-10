@@ -12,8 +12,7 @@ class ConversationService {
   }) =>
       _db.getConversations(includeArchived: includeArchived);
 
-  Future<Conversation?> getConversation(String id) =>
-      _db.getConversation(id);
+  Future<Conversation?> getConversation(String id) => _db.getConversation(id);
 
   Future<Conversation> createConversation({
     String? title,

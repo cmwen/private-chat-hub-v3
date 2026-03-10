@@ -63,11 +63,43 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final ConversationService _conversationService;
   final Ref _ref;
 
+  /// Set to true when the user taps "Stop" during streaming.
+  bool _cancelled = false;
+
+  /// Holds a reference to the in-flight assistant message so
+  /// [stopGeneration] can finalise it with the accumulated text.
+  Message? _pendingAssistantMsg;
+
+  /// Token usage captured from the last [onUsage] callback.
+  TokenUsage? _pendingTokenUsage;
+
   ChatNotifier(this._chatService, this._conversationService, this._ref)
       : super(const ChatState());
 
   void selectModel(String modelId) {
     state = state.copyWith(selectedModelId: modelId);
+  }
+
+  /// Cancels the current streaming response, saves whatever has been
+  /// accumulated so far as the final message content, and returns to idle.
+  void stopGeneration() {
+    if (state.status != ChatStatus.streaming) return;
+    _cancelled = true;
+
+    final msg = _pendingAssistantMsg;
+    if (msg != null) {
+      final accumulated = state.streamingText;
+      final completedMsg = msg.copyWith(
+        content: accumulated.isEmpty ? '(stopped)' : accumulated,
+        status: MessageStatus.sent,
+      );
+      // Fire-and-forget: persist the partial message to the DB.
+      _ref
+          .read(messagesProvider(msg.conversationId).notifier)
+          .updateMessage(completedMsg);
+    }
+
+    state = state.copyWith(status: ChatStatus.idle, streamingText: '');
   }
 
   Future<void> sendMessage(String text, String conversationId) async {
@@ -76,6 +108,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
         state.status == ChatStatus.streaming) {
       return;
     }
+
+    // Reset per-request state.
+    _cancelled = false;
+    _pendingTokenUsage = null;
+    _pendingAssistantMsg = null;
 
     final userMsg = Message.create(
       conversationId: conversationId,
@@ -88,6 +125,17 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _ref.read(messagesProvider(conversationId).notifier);
     await messagesNotifier.addMessage(userMsg);
 
+    // Auto-title: rename "New Chat" conversations using the first 40 chars.
+    final conv = await _conversationService.getConversation(conversationId);
+    if (conv != null && conv.title == 'New Chat') {
+      final trimmed = text.trim();
+      final newTitle =
+          trimmed.length > 40 ? '${trimmed.substring(0, 40)}...' : trimmed;
+      await _ref
+          .read(conversationsProvider.notifier)
+          .renameConversation(conversationId, newTitle);
+    }
+
     final assistantMsg = Message.create(
       conversationId: conversationId,
       role: MessageRole.assistant,
@@ -95,12 +143,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
       status: MessageStatus.sending,
     );
     await messagesNotifier.addMessage(assistantMsg);
+    _pendingAssistantMsg = assistantMsg;
 
     state = state.copyWith(status: ChatStatus.streaming, streamingText: '');
 
     try {
-      final history =
-          await _conversationService.getMessages(conversationId);
+      final history = await _conversationService.getMessages(conversationId);
       final settings = _ref.read(settingsProvider);
 
       final fullText = await _chatService.sendMessage(
@@ -110,23 +158,32 @@ class ChatNotifier extends StateNotifier<ChatState> {
         userText: text,
         temperature: settings.temperature,
         onChunk: (chunk) {
+          if (_cancelled) return; // Stop appending when cancelled.
           state = state.copyWith(
             streamingText: state.streamingText + chunk,
           );
         },
         onUsage: (inputTokens, outputTokens) {
-          // Token tracking — will feed CostService in Phase 2
+          _pendingTokenUsage = TokenUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+          );
         },
       );
+
+      // Only update state if the user hasn't already cancelled.
+      if (_cancelled) return;
 
       final completedMsg = assistantMsg.copyWith(
         content: fullText,
         status: MessageStatus.sent,
+        tokenUsage: _pendingTokenUsage,
       );
       await messagesNotifier.updateMessage(completedMsg);
 
       state = state.copyWith(status: ChatStatus.idle, streamingText: '');
     } on ChatServiceException catch (e) {
+      if (_cancelled) return; // stopGeneration already handled the state.
       final failedMsg = assistantMsg.copyWith(
         content: 'Error: ${e.message}',
         status: MessageStatus.failed,

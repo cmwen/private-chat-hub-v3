@@ -94,8 +94,8 @@ class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
 
   @override
   Widget build(BuildContext context) {
-    final ollamaStatus = ref
-        .watch(ollamaProviderInstance.select((p) => p.currentStatus));
+    final ollamaStatus =
+        ref.watch(ollamaProviderInstance.select((p) => p.currentStatus));
 
     return ListTile(
       leading: Icon(
@@ -131,8 +131,7 @@ class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
   }
 
   void _showOllamaDialog(BuildContext context) {
-    final controller =
-        TextEditingController(text: widget.ollamaBaseUrl);
+    final controller = TextEditingController(text: widget.ollamaBaseUrl);
     showDialog<void>(
       context: context,
       builder: (ctx) => _OllamaDialog(
@@ -164,9 +163,7 @@ class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
           }
         },
         onSave: (url) async {
-          await ref
-              .read(settingsProvider.notifier)
-              .setOllamaBaseUrl(url);
+          await ref.read(settingsProvider.notifier).setOllamaBaseUrl(url);
           final ollamaInst = ref.read(ollamaProviderInstance);
           ollamaInst.updateBaseUrl(url);
           await ollamaInst.initialize();

@@ -48,9 +48,8 @@ class OllamaProvider implements LlmProvider {
 
   void updateBaseUrl(String url) {
     _baseUrl = url.trimRight().replaceAll(RegExp(r'/$'), '');
-    _status = _baseUrl.isEmpty
-        ? ProviderStatus.unconfigured
-        : ProviderStatus.offline;
+    _status =
+        _baseUrl.isEmpty ? ProviderStatus.unconfigured : ProviderStatus.offline;
   }
 
   @override
@@ -227,10 +226,9 @@ class OllamaProvider implements LlmProvider {
       if (remaining.isNotEmpty) {
         try {
           final json = jsonDecode(remaining) as Map<String, dynamic>;
-          final content =
-              (json['message'] as Map<String, dynamic>?)?['content']
-                      as String? ??
-                  '';
+          final content = (json['message'] as Map<String, dynamic>?)?['content']
+                  as String? ??
+              '';
           if (content.isNotEmpty) yield ChatResponseContent(content);
         } catch (_) {}
       }
