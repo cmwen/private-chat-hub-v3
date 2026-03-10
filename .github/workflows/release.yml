@@ -15,13 +15,62 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  prepare:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release_tag.outputs.tag }}
+
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
+            tag="${{ github.event.inputs.tag_name }}"
+          else
+            tag="manual-${GITHUB_RUN_NUMBER}"
+          fi
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate Flutter project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  build-android:
+    name: Build Android release
+    needs:
+      - prepare
+      - validate
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
 
     steps:
       - name: Check out repository
@@ -48,12 +97,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze project
-        run: flutter analyze
-
-      - name: Run tests
-        run: flutter test
-
       - name: Configure optional Android signing
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
         shell: bash
@@ -66,46 +109,140 @@ jobs:
             printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
           } > android/key.properties
 
-      - name: Resolve release tag
-        id: release_tag
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME}"
-          elif [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
-            tag="${{ github.event.inputs.tag_name }}"
-          else
-            tag="manual-${GITHUB_RUN_NUMBER}"
-          fi
-
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
       - name: Build release APK
         run: flutter build apk --release
 
       - name: Build release app bundle
         run: flutter build appbundle --release
 
-      - name: Upload release artifacts
+      - name: Stage Android release artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/private-chat-hub-android-${RELEASE_TAG}.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/private-chat-hub-android-${RELEASE_TAG}.aab"
+
+      - name: Upload Android release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts-${{ steps.release_tag.outputs.tag }}
+          name: release-assets-android
           if-no-files-found: error
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            build/app/outputs/bundle/release/*.aab
+          path: dist/*
+
+  build-macos:
+    name: Build macOS release
+    needs:
+      - prepare
+      - validate
+    runs-on: macos-latest
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS app
+        run: flutter build macos --release
+
+      - name: Archive macOS app
+        shell: bash
+        run: |
+          mkdir -p dist
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "No macOS app bundle found in build output."
+            exit 1
+          fi
+
+          ditto -c -k --keepParent "$app_path" "dist/private-chat-hub-macos-${RELEASE_TAG}.zip"
+
+      - name: Upload macOS release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-macos
+          if-no-files-found: error
+          path: dist/*
+
+  build-windows:
+    name: Build Windows release
+    needs:
+      - prepare
+      - validate
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Archive Windows app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $releaseDir = 'build/windows/x64/runner/Release'
+          $zipPath = "dist/private-chat-hub-windows-$env:RELEASE_TAG.zip"
+          Compress-Archive -Path (Join-Path $releaseDir '*') -DestinationPath $zipPath -Force
+
+      - name: Upload Windows release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-windows
+          if-no-files-found: error
+          path: dist/*
+
+  publish:
+    name: Publish GitHub release
+    needs:
+      - prepare
+      - build-android
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          merge-multiple: true
+          path: release-assets
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         shell: bash
         run: |
-          tag="${{ steps.release_tag.outputs.tag }}"
-          files=(
-            build/app/outputs/flutter-apk/*.apk
-            build/app/outputs/bundle/release/*.aab
-          )
+          mapfile -d '' files < <(find release-assets -maxdepth 1 -type f -print0 | sort -z)
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No release assets were downloaded."
+            exit 1
+          fi
 
+          tag="${RELEASE_TAG}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else

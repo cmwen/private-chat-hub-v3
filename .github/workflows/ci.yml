@@ -11,7 +11,32 @@ permissions:
   contents: read
 
 jobs:
-  flutter:
+  validate:
+    name: Validate Flutter project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  build-android:
+    name: Build Android
+    needs: validate
     runs-on: ubuntu-latest
 
     steps:
@@ -37,23 +62,98 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze project
-        run: flutter analyze
-
-      - name: Run tests
-        run: flutter test
-
       - name: Build release APK
         run: flutter build apk --release
 
       - name: Build release app bundle
         run: flutter build appbundle --release
 
+      - name: Stage Android build artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/private-chat-hub-android.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/private-chat-hub-android.aab
+
       - name: Upload Android build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-build-artifacts
           if-no-files-found: error
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            build/app/outputs/bundle/release/*.aab
+          path: dist/*
+
+  build-macos:
+    name: Build macOS
+    needs: validate
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS app
+        run: flutter build macos --release
+
+      - name: Archive macOS app
+        shell: bash
+        run: |
+          mkdir -p dist
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "No macOS app bundle found in build output."
+            exit 1
+          fi
+
+          ditto -c -k --keepParent "$app_path" dist/private-chat-hub-macos.zip
+
+      - name: Upload macOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-artifacts
+          if-no-files-found: error
+          path: dist/*
+
+  build-windows:
+    name: Build Windows
+    needs: validate
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Archive Windows app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $releaseDir = 'build/windows/x64/runner/Release'
+          $zipPath = 'dist/private-chat-hub-windows.zip'
+          Compress-Archive -Path (Join-Path $releaseDir '*') -DestinationPath $zipPath -Force
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-artifacts
+          if-no-files-found: error
+          path: dist/*
