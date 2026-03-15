@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+
 import '../models/message.dart';
+import '../utils/platform_utils.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -19,6 +21,10 @@ class MessageBubble extends StatelessWidget {
     final isUser = message.role == MessageRole.user;
     final theme = Theme.of(context);
     final text = streamingOverride ?? message.content;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxBubbleWidth = isWideLayout(screenWidth)
+        ? desktopMessageMaxWidth
+        : screenWidth * 0.82;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -40,51 +46,54 @@ class MessageBubble extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: isUser
-                      ? const Radius.circular(18)
-                      : const Radius.circular(4),
-                  bottomRight: isUser
-                      ? const Radius.circular(4)
-                      : const Radius.circular(18),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isUser
+                      ? theme.colorScheme.primaryContainer
+                      : theme.colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: isUser
+                        ? const Radius.circular(18)
+                        : const Radius.circular(4),
+                    bottomRight: isUser
+                        ? const Radius.circular(4)
+                        : const Radius.circular(18),
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildContent(context, text, isUser, theme),
-                  if (!isUser &&
-                      message.status == MessageStatus.sent &&
-                      message.tokenUsage != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.token,
-                          size: 12,
-                          color: theme.colorScheme.outline,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '${message.tokenUsage!.total} tokens',
-                          style: theme.textTheme.labelSmall?.copyWith(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildContent(context, text, isUser, theme),
+                    if (!isUser &&
+                        message.status == MessageStatus.sent &&
+                        message.tokenUsage != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.token,
+                            size: 12,
                             color: theme.colorScheme.outline,
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${message.tokenUsage!.total} tokens',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -145,6 +154,7 @@ class MessageBubble extends StatelessWidget {
     if (showMarkdown && !isUser && text.isNotEmpty) {
       return MarkdownBody(
         data: text,
+        selectable: true,
         styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
           p: theme.textTheme.bodyMedium,
           code: theme.textTheme.bodySmall?.copyWith(

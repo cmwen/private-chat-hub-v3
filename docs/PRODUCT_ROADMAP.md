@@ -10,7 +10,7 @@
 
 **"One app. Every AI model. Your choice."**
 
-Private Chat Hub is a universal AI chat app for Android. Users choose their privacy/cost/performance balance: local models for full privacy, self-hosted (Ollama) for control, or cloud APIs for access to frontier models. Each phase builds on the last — foundation first, then extensions, then polish.
+Private Chat Hub is a universal AI chat app for mobile and desktop. Users choose their privacy/cost/performance balance: local models for full privacy, self-hosted (Ollama) for control, or cloud APIs for access to frontier models. Saved chat history is portable as plain-text files, while SQLite stays a local cache/index for speed. Each phase builds on the last — foundation first, then extensions, then polish.
 
 ---
 
@@ -24,7 +24,7 @@ Private Chat Hub is a universal AI chat app for Android. Users choose their priv
 
 ## Phase 1: Foundation
 
-**Goal:** Deliver a fully functional chat app for self-hosted and local models. This is the MVP — everything else builds on it.
+**Goal:** Deliver a fully functional cross-device chat app for self-hosted and local models. This is the MVP — everything else builds on it.
 
 ### Key Features
 
@@ -33,6 +33,7 @@ Private Chat Hub is a universal AI chat app for Android. Users choose their priv
 | Core chat | Send/receive messages with streaming responses |
 | Markdown rendering | Code blocks with syntax highlighting, lists, links, tables |
 | Conversation management | Create, list, search, rename, delete conversations |
+| Portable history store | Save conversations as plain-text files and rebuild the local SQLite index/cache from them |
 | Ollama integration | Connect to self-hosted Ollama instances (host/port config, connection testing, status indicator) |
 | Local model support | On-device inference via LiteRT/Gemini Nano for fully offline use |
 | Model picker | Select from available models on configured providers |
@@ -69,7 +70,7 @@ None — this is the foundation.
 
 ## Phase 2: Universal Provider Support
 
-**Goal:** Expand from self-hosted/local to cloud APIs. Users can access OpenAI, Anthropic, and Google models alongside their existing providers. This is the strategic differentiator — no other mobile app covers local + self-hosted + cloud.
+**Goal:** Expand from self-hosted/local to cloud APIs. Users can access OpenAI, Anthropic, and Google models alongside their existing providers. This is the strategic differentiator — few cross-device apps cover local + self-hosted + cloud in one workspace model.
 
 ### Key Features
 
@@ -161,19 +162,20 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 | Feature | Description |
 |---------|-------------|
 | Model comparison | Side-by-side responses from 2+ models on the same prompt |
-| Text-to-speech | Read AI responses aloud using Android TTS; play/pause, speed control, voice selection |
-| Projects | Group conversations by project/topic; project-level default model and system prompt |
-| Export & sharing | Export conversations as Markdown/PDF; share via Android share intent; receive text from other apps |
+| Text-to-speech | Read AI responses aloud using platform TTS where available; play/pause, speed control, voice selection |
+| Projects | Group conversations by project/topic folders; support `AGENT.md` for project-level defaults |
+| Export & sharing | Export conversations as native history/Markdown/PDF; share or open via platform-native flows |
+| Chat history controls | Let users choose when chats are saved and move portable history between devices |
 | Advanced search | Full-text search across all conversations; filter by model, date, provider, project |
 | Thinking model support | Display extended reasoning steps from models that support it (chain-of-thought visibility) |
 
 ### Success Criteria
 
 - [ ] Model comparison renders side-by-side on phone screens without UX degradation
-- [ ] TTS works on 95%+ of Android devices (API 26+)
+- [ ] TTS works on supported mobile and desktop targets with graceful fallback where platform TTS differs
 - [ ] Export produces valid Markdown that renders correctly in external tools
 - [ ] Search returns results in < 500ms for 1000+ conversations
-- [ ] Share intent receives text from 95%+ of common Android apps
+- [ ] Native history files can be moved to another device and restored without data loss
 - [ ] Thinking model reasoning steps render with clear visual hierarchy
 
 ### Dependencies
@@ -189,7 +191,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 
 ## Phase 5: Polish & Scale
 
-**Goal:** Production hardening. Make the app fast, accessible, international, and ready for diverse Android devices. No new major features — focus on quality.
+**Goal:** Production hardening. Make the app fast, accessible, international, and ready for diverse mobile and desktop environments. No new major features — focus on quality.
 
 ### Key Features
 
@@ -198,7 +200,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 | Performance optimization | Lazy loading, response caching, memory profiling, startup time reduction |
 | Accessibility audit | Screen reader support, contrast ratios, touch targets, semantic labels |
 | Internationalization | String extraction, RTL support, locale-aware formatting; start with top 5 languages |
-| Tablet & foldable support | Responsive layouts, multi-pane UI on large screens, fold-aware positioning |
+| Tablet, foldable & desktop support | Responsive layouts, multi-pane UI on large screens, fold-aware positioning, desktop window resizing |
 | Analytics & insights | Personal usage dashboard — messages per day, model usage breakdown, cost trends, conversation stats |
 | Long-running task support | Background execution for extended model operations, progress tracking, task resumption |
 
@@ -207,7 +209,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 - [ ] App startup < 1.5s on mid-range devices (cold start)
 - [ ] Memory usage < 200MB during normal operation, < 300MB during model comparison
 - [ ] WCAG 2.1 AA compliance for all core flows
-- [ ] UI renders correctly on screens from 5" phone to 12" tablet
+- [ ] UI renders correctly on screens from 5" phone to large desktop windows
 - [ ] Foldable devices handle fold/unfold without state loss
 - [ ] All user-facing strings extracted and translatable
 - [ ] No ANR (Application Not Responding) events in production
@@ -225,7 +227,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 
 ## Cross-Cutting Concerns (All Phases)
 
-- **Security:** API keys encrypted at rest. No secrets in logs or crash reports. Conversation data local-only.
+- **Security:** API keys encrypted at rest. No secrets in logs or crash reports. Saved conversation history remains file-local unless the user exports or syncs it with their own tools.
 - **Testing:** Unit + widget + integration tests. Target 80%+ coverage by Phase 3.
 - **CI/CD:** Automated build/test/lint on every PR. Signed release builds via GitHub Actions.
 - **Privacy:** "Privacy by choice." Local/Ollama = zero data to third parties. Cloud = only conversation content to selected provider. No telemetry without opt-in.
@@ -234,7 +236,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 
 ## Out of Scope
 
-iOS, desktop, cloud sync, custom agent builder, voice input (STT), multi-user conversations, plugin marketplace.
+iOS, Private Chat Hub-hosted cloud sync, custom agent builder, voice input (STT), multi-user conversations, plugin marketplace.
 
 ---
 
@@ -247,7 +249,7 @@ iOS, desktop, cloud sync, custom agent builder, voice input (STT), multi-user co
 | Provider abstraction in Phase 1 | Avoids costly refactor later. The interface is small; the cost is low. |
 | Cloud APIs in Phase 2, not Phase 1 | Foundation must be solid first. Cloud adds complexity (auth, cost, rate limits). |
 | Tool calling in Phase 3, not Phase 2 | Needs stable multi-provider support. Tool calling varies significantly across providers. |
-| No iOS | Android-first focus. Flutter enables iOS later if demand justifies it. |
+| No iOS | Android + desktop first. Flutter enables iOS later if demand justifies it. |
 
 ---
 

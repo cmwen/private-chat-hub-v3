@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'providers/settings_provider.dart';
 import 'screens/chat_screen.dart';
 import 'screens/settings_screen.dart';
+import 'utils/platform_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (isDesktopPlatform) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   final prefs = await SharedPreferences.getInstance();
   runApp(
     ProviderScope(

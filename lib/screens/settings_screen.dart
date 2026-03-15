@@ -5,6 +5,7 @@ import '../models/provider_model.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/ollama_provider.dart';
+import '../utils/platform_utils.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -19,60 +20,79 @@ class SettingsScreen extends ConsumerWidget {
         title: const Text('Settings'),
         centerTitle: false,
       ),
-      body: ListView(
-        children: [
-          _SectionHeader(title: 'Chat'),
-          SwitchListTile(
-            title: const Text('Streaming'),
-            subtitle: const Text('Show responses as they arrive'),
-            value: settings.streamingEnabled,
-            onChanged: (v) =>
-                ref.read(settingsProvider.notifier).setStreaming(v),
-          ),
-          SwitchListTile(
-            title: const Text('Markdown Rendering'),
-            subtitle: const Text('Format AI responses with markdown'),
-            value: settings.markdownEnabled,
-            onChanged: (v) =>
-                ref.read(settingsProvider.notifier).setMarkdown(v),
-          ),
-          _SectionHeader(title: 'Generation'),
-          ListTile(
-            title: const Text('Temperature'),
-            subtitle: Slider(
-              value: settings.temperature,
-              min: 0,
-              max: 2,
-              divisions: 20,
-              label: settings.temperature.toStringAsFixed(1),
-              onChanged: (v) =>
-                  ref.read(settingsProvider.notifier).setTemperature(v),
-            ),
-            trailing: SizedBox(
-              width: 36,
-              child: Text(
-                settings.temperature.toStringAsFixed(1),
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final listView = ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              _SectionHeader(title: 'Chat'),
+              SwitchListTile(
+                title: const Text('Streaming'),
+                subtitle: const Text('Show responses as they arrive'),
+                value: settings.streamingEnabled,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setStreaming(v),
               ),
-            ),
-          ),
-          _SectionHeader(title: 'Providers'),
-          _OllamaSettingsTile(ollamaBaseUrl: settings.ollamaBaseUrl),
-          ListTile(
-            leading: const Icon(Icons.smartphone_outlined),
-            title: const Text('On-Device Models'),
-            subtitle: const Text('Coming in a future update'),
-            trailing: const Icon(Icons.chevron_right),
-            enabled: false,
-          ),
-          _SectionHeader(title: 'About'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Private Chat Hub'),
-            subtitle: Text('v1.0.0 – Phase 1'),
-          ),
-        ],
+              SwitchListTile(
+                title: const Text('Markdown Rendering'),
+                subtitle: const Text('Format AI responses with markdown'),
+                value: settings.markdownEnabled,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setMarkdown(v),
+              ),
+              _SectionHeader(title: 'Generation'),
+              ListTile(
+                title: const Text('Temperature'),
+                subtitle: Slider(
+                  value: settings.temperature,
+                  min: 0,
+                  max: 2,
+                  divisions: 20,
+                  label: settings.temperature.toStringAsFixed(1),
+                  onChanged: (v) =>
+                      ref.read(settingsProvider.notifier).setTemperature(v),
+                ),
+                trailing: SizedBox(
+                  width: 36,
+                  child: Text(
+                    settings.temperature.toStringAsFixed(1),
+                    style: theme.textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+              _SectionHeader(title: 'Providers'),
+              _OllamaSettingsTile(ollamaBaseUrl: settings.ollamaBaseUrl),
+              ListTile(
+                leading: const Icon(Icons.smartphone_outlined),
+                title: const Text('On-Device Models'),
+                subtitle: const Text('Coming in a future update'),
+                trailing: const Icon(Icons.chevron_right),
+                enabled: false,
+              ),
+              _SectionHeader(title: 'About'),
+              const ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('Private Chat Hub'),
+                subtitle: Text('v1.0.0 – Phase 1'),
+              ),
+            ],
+          );
+
+          final body = isWideLayout(constraints.maxWidth)
+              ? Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: desktopPageMaxWidth,
+                    ),
+                    child: listView,
+                  ),
+                )
+              : listView;
+
+          return Scrollbar(child: body);
+        },
       ),
     );
   }
@@ -219,8 +239,9 @@ class _OllamaDialogState extends State<_OllamaDialog> {
             controller: widget.controller,
             decoration: const InputDecoration(
               labelText: 'Base URL',
-              hintText: 'http://192.168.1.x:11434',
-              helperText: 'Include http:// or https://',
+              hintText: 'http://localhost:11434',
+              helperText:
+                  'Use localhost for this computer or a LAN URL for another device.',
             ),
             keyboardType: TextInputType.url,
             autofocus: true,

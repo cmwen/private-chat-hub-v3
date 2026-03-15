@@ -67,13 +67,14 @@ Core conversation experience — sending messages, receiving streaming responses
 - **Given** a file exceeds 5 MB, **When** the check runs, **Then** I see a warning; files over 10 MB are blocked.
 - **Given** I send with an attached file, **When** delivered, **Then** content is extracted into the prompt and shown as a collapsible card in chat.
 
-### US-CHAT-05: Share via Android Intents
-**As** Jordan (Power User), **I want to** share content into and out of the app via Android share sheet, **so that** I can quickly discuss content from other apps and distribute AI responses.  
+### US-CHAT-05: Share via Platform Share & Open
+**As** Jordan (Power User), **I want to** share content into and out of the app using platform-native share and open flows, **so that** I can quickly discuss content from other apps and distribute AI responses.  
 **Priority:** Must · **Points:** 5
 
 **Acceptance Criteria:**
-- **Given** I share text/images from another app, **When** I pick Private Chat Hub, **Then** the app opens with content pre-populated in the input field.
-- **Given** I tap Share on a conversation or message, **When** the share sheet opens, **Then** I can share as plain text, Markdown, or HTML.
+- **Given** I share or open text/images from another app, **When** I pick Private Chat Hub, **Then** the app opens with content pre-populated in the input field.
+- **Given** I tap Share on a conversation or message, **When** the platform share or save surface opens, **Then** I can share or save as native history, plain text, Markdown, or HTML.
+- **Given** I open a saved native history file from another device, **When** the app receives it, **Then** it offers to restore or import the chat.
 
 ---
 
@@ -199,10 +200,20 @@ Organizing, searching, exporting, and managing conversation history across all p
 
 **Acceptance Criteria:**
 - **Given** I access the export menu, **When** I choose scope, **Then** I can export a single conversation, selected conversations, or all conversations.
-- **Given** I select a format, **When** I export as JSON, Markdown, or Plain Text, **Then** the file includes all messages, timestamps, model names, provider info, and conversation metadata.
+- **Given** I select a format, **When** I export as native history, JSON, Markdown, or Plain Text, **Then** the file includes all messages, timestamps, model names, provider info, and conversation metadata.
 - **Given** a conversation includes images, **When** exporting, **Then** images are either embedded (base64 in JSON) or saved separately with references.
-- **Given** export completes, **When** the file is saved, **Then** it goes to the Downloads folder with a success notification; I can open or share it immediately via Android share sheet.
+- **Given** export completes, **When** the file is saved, **Then** it goes to the user-selected location or platform default with a success notification; I can open or share it immediately.
 - **Given** I export many conversations, **When** processing, **Then** I see a progress indicator and can cancel without losing partial work.
+
+### US-CONV-04: Restore Portable Chat Histories
+**As** Alex (Privacy Advocate), **I want to** restore chats from saved or synced history files, **so that** I can continue the same conversation on another device.  
+**Priority:** Must · **Points:** 5
+
+**Acceptance Criteria:**
+- **Given** I open a native history file or synced project folder, **When** the parser runs, **Then** the app reconstructs the conversation with the same message order, roles, timestamps, and attachments.
+- **Given** a restored conversation contains Markdown, code blocks, or relative image links, **When** it renders, **Then** it looks the same as the original device within platform constraints.
+- **Given** the imported history is valid, **When** restore completes, **Then** it becomes searchable and browsable without duplicating the original source file.
+- **Given** the file is partial or malformed, **When** restore fails, **Then** I see a clear error and the app does not crash or corrupt existing history.
 
 ---
 
@@ -341,24 +352,34 @@ Audio output for AI responses — listen hands-free while driving, exercising, o
 
 ## Epic 9: Projects
 
-Organizing conversations into logical workspaces for focused work.
+Organizing conversations into folder-backed workspaces for focused work.
 
 ### US-PROJ-01: Create and Manage Projects
 **As** Maya (AI Developer), **I want to** group conversations into projects, **so that** I can organize by topic or goal.  
-**Priority:** Could · **Points:** 5
+**Priority:** Should · **Points:** 5
 
 **Acceptance Criteria:**
-- **Given** I create a project, **When** I set a name and optional description, **Then** I can assign existing conversations to it or create new ones within it.
-- **Given** I open a project, **When** I view it, **Then** I see all its conversations sorted by recency; conversations also remain accessible from the global list.
+- **Given** I create a project, **When** I set a name and optional description, **Then** the app creates a project folder that can hold history files and an `AGENT.md` configuration.
+- **Given** I assign conversations to a project, **When** I open it, **Then** I see all its conversations sorted by recency; conversations also remain accessible from the global list.
 - **Given** I delete a project, **When** I confirm, **Then** the project is removed but its conversations are preserved in the global list (not deleted).
 
-### US-PROJ-02: Project-Level Settings
-**As** Maya (AI Developer), **I want to** set default model, system prompt, and parameters per project, **so that** new conversations inherit the right context.  
-**Priority:** Could · **Points:** 3
+### US-PROJ-02: Configure Projects via `AGENT.md`
+**As** Maya (AI Developer), **I want to** define project defaults in `AGENT.md`, **so that** new conversations inherit the right context wherever the project folder is opened.  
+**Priority:** Should · **Points:** 3
 
 **Acceptance Criteria:**
-- **Given** I configure project defaults (model, system prompt, temperature, etc.), **When** I start a new conversation in the project, **Then** it inherits those defaults automatically.
+- **Given** a project folder contains `AGENT.md`, **When** I open the project, **Then** the app reads project name, default model, system prompt, and other supported defaults from that file.
+- **Given** I change project defaults in the app, **When** I save, **Then** the corresponding `AGENT.md` file updates without touching unrelated history files.
 - **Given** I override a project default in a conversation, **When** I view project settings, **Then** the project defaults remain unchanged; overrides are per-conversation only.
+
+### US-PROJ-03: Treat Agent Chats Like Project Chats
+**As** Maya (AI Developer), **I want to** open agent workspaces and project workspaces with the same history model, **so that** agent chats are portable and manageable like any other project chat.  
+**Priority:** Should · **Points:** 3
+
+**Acceptance Criteria:**
+- **Given** I open a folder-backed agent or project workspace, **When** it contains `AGENT.md` and history files, **Then** the app indexes and renders its chats using the same parser and UI.
+- **Given** agent chat histories are synced from another device, **When** I restore them, **Then** they remain searchable, exportable, and archivable like project chats.
+- **Given** I move or copy a workspace folder, **When** I reopen it elsewhere, **Then** configuration and chat history stay together.
 
 ---
 
@@ -371,9 +392,9 @@ App-level configuration, model parameters, and tool settings.
 **Priority:** Must · **Points:** 5
 
 **Acceptance Criteria:**
-- **Given** I open Settings, **When** I view the screen, **Then** I see organized sections: Providers, Appearance, Chat, Data, About.
+- **Given** I open Settings, **When** I view the screen, **Then** I see organized sections: Providers, Appearance, Chat, Data & Privacy, About.
 - **Given** I change theme (Light/Dark/System) or font size (S/M/L), **When** I save, **Then** changes apply instantly and persist across restarts.
-- **Given** I view the Data section, **When** I interact, **Then** I can see storage used, clear cache, clear all conversations (with confirmation), and export all data.
+- **Given** I view the Data & Privacy section, **When** I interact, **Then** I can see chat-history controls, storage used, clear cache, clear all conversations (with confirmation), and export all data.
 - **Given** I view the About section, **When** it loads, **Then** I see app version, build number, open-source licenses, privacy policy link, and a link to report bugs/feedback.
 
 ### US-SET-02: Adjust Model Parameters
@@ -391,6 +412,15 @@ App-level configuration, model parameters, and tool settings.
 
 **Acceptance Criteria:**
 - **Given** I open tool settings, **When** I view options, **Then** I can enable/disable web search, enter search API keys, and clear tool caches.
+
+### US-SET-04: Choose When Chat History Is Saved
+**As** Alex (Privacy Advocate), **I want to** control when chats become saved history files, **so that** I can decide which conversations stay temporary and which become portable records.  
+**Priority:** Must · **Points:** 3
+
+**Acceptance Criteria:**
+- **Given** I open Chat History settings, **When** I choose Automatically, Ask before saving, or Only when I tap Save, **Then** the choice persists for new chats.
+- **Given** I use Ask before saving or Manual mode, **When** I leave a chat, **Then** I can save, discard, or cancel without losing control of the current state.
+- **Given** a chat has not been saved yet, **When** I view it, **Then** it is clearly marked as temporary and excluded from export or sync until saved.
 
 ---
 
@@ -430,8 +460,8 @@ Working without internet, local data control, and network discovery.
 
 **Acceptance Criteria:**
 - **Given** I use the app, **When** I monitor network traffic, **Then** no data is sent to any server except configured AI providers — zero telemetry or analytics without explicit consent.
-- **Given** the app stores data, **When** I check file locations, **Then** the SQLite database is in the app's private directory, not accessible to other apps, and encrypted at rest via Android encryption.
-- **Given** the app crashes mid-message, **When** I restart, **Then** no data is corrupted; the database remains consistent via transaction safety.
+- **Given** the app stores saved chat history, **When** I check file locations, **Then** I find plain-text history files plus a separate local SQLite cache/index used only for speed and temporary state.
+- **Given** the app crashes mid-message, **When** I restart, **Then** saved history files remain readable and the local cache can recover or rebuild safely.
 - **Given** thousands of messages, **When** I query conversations, **Then** responses return in <100 ms and the UI remains responsive.
 - **Given** I want to verify privacy, **When** I check the About section, **Then** I see a privacy policy link confirming no data collection.
 
@@ -469,13 +499,13 @@ Working without internet, local data control, and network discovery.
 | 1. Chat & Messaging | 5 | 4 | 1 | 0 | 23 |
 | 2. Provider Management | 4 | 3 | 1 | 0 | 16 |
 | 3. Model Discovery & Selection | 4 | 3 | 1 | 0 | 21 |
-| 4. Conversation Management | 3 | 2 | 1 | 0 | 15 |
+| 4. Conversation Management | 4 | 3 | 1 | 0 | 20 |
 | 5. Tool Calling & Extensions | 3 | 2 | 1 | 0 | 19 |
 | 6. Model Comparison | 3 | 0 | 2 | 1 | 18 |
 | 7. Cost & Usage | 3 | 1 | 2 | 0 | 13 |
 | 8. Text-to-Speech | 3 | 0 | 2 | 1 | 16 |
-| 9. Projects | 2 | 0 | 0 | 2 | 8 |
-| 10. Settings & Preferences | 3 | 1 | 2 | 0 | 12 |
+| 9. Projects | 3 | 0 | 3 | 0 | 11 |
+| 10. Settings & Preferences | 4 | 2 | 2 | 0 | 15 |
 | 11. Onboarding | 2 | 1 | 1 | 0 | 8 |
 | 12. Offline & Privacy | 4 | 3 | 1 | 0 | 15 |
-| **Totals** | **39** | **20** | **15** | **4** | **184** |
+| **Totals** | **42** | **22** | **18** | **2** | **195** |

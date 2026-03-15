@@ -2,7 +2,7 @@
 
 ## Vision Statement
 
-**Private Chat Hub** is a universal AI chat platform that gives users full control over how they interact with AI. One app connects to on-device models, self-hosted infrastructure, and cloud AI services — letting each user choose their own balance of privacy, performance, and cost. We are the only mobile-first app that spans the entire spectrum from fully offline, on-device AI to the latest cloud models.
+**Private Chat Hub** is a universal AI chat platform that gives users full control over how they interact with AI across mobile and desktop. One app connects to on-device models, self-hosted infrastructure, and cloud AI services — letting each user choose their own balance of privacy, performance, and cost. Saved chat history lives as portable plain-text files, while SQLite accelerates search, browsing, and local recovery without becoming the source of truth.
 
 ## Mission
 
@@ -22,9 +22,12 @@ No vendor lock-in. Every feature works across provider types. The app is an inte
 Cloud AI costs money. We make that visible — per message, per conversation, per month. We proactively suggest free local or self-hosted alternatives when they can handle the task. No surprises.
 
 ### 4. Offline First
-The app must be fully functional without an internet connection when paired with on-device models. Cloud and self-hosted features degrade gracefully: messages queue, sync when connectivity returns.
+The app must be fully functional without an internet connection when paired with on-device models. Saved histories remain available from local files, while cloud and self-hosted features degrade gracefully: messages queue, sync-compatible files remain readable, and connectivity-dependent actions recover cleanly.
 
-### 5. Simplicity Over Complexity
+### 5. Portable History Ownership
+Conversation history belongs to the user as plain-text files they can read, back up, sync, and restore on another device. The app may cache and index that history locally for speed, but it never hides user data behind a proprietary database format.
+
+### 6. Simplicity Over Complexity
 Complex infrastructure, simple interface. A new user should be productive within minutes. Power features exist but don't clutter the default experience.
 
 ---
@@ -34,7 +37,7 @@ Complex infrastructure, simple interface. A new user should be productive within
 ### For Privacy-Conscious Users
 - **Complete data ownership** — local and self-hosted conversations never leave your control
 - **Full offline mode** — chat with on-device models anywhere, no internet required
-- **Data portability** — export your history in open formats, move it anywhere
+- **Portable plain-text history** — open your saved chats in any text editor, sync them with your own tools, and restore them on another device
 - **Per-conversation privacy** — choose local, self-hosted, or cloud for each conversation independently
 
 ### For AI Enthusiasts & Developers
@@ -58,13 +61,13 @@ Complex infrastructure, simple interface. A new user should be productive within
 | **Model Sources** | Local + Self-Hosted + Cloud | Single cloud provider | Local / Self-hosted only |
 | **Offline Mode** | Full (on-device models) | None | Limited (desktop only) |
 | **Cloud APIs** | Multiple providers | Single provider | None |
-| **Mobile-First** | Native Android | Native mobile | Desktop only |
+| **Mobile + Desktop** | Adaptive mobile + desktop | Native mobile | Desktop only |
 | **Privacy Tiers** | 3 tiers (local / self-hosted / cloud) | Cloud only | Local only |
 | **Cost Model** | Free to pay-per-use | Subscription required | Free (own hardware) |
 | **Self-Hosted** | Ollama support | None | Multiple backends |
 | **Cross-Provider Comparison** | Yes | No | Local models only |
 
-**Unique position:** The only mobile-first app supporting the full spectrum from on-device privacy to cloud convenience.
+**Unique position:** The only adaptive mobile + desktop app supporting the full spectrum from on-device privacy to cloud convenience with portable, file-backed chat history.
 
 ### Competitive Positioning
 
@@ -74,7 +77,7 @@ Complex infrastructure, simple interface. A new user should be productive within
 - Save money with smart model routing and pay-per-use pricing
 
 **Against Jan.ai / LM Studio:**
-- Mobile-first with full offline capability
+- Mobile and desktop with the same portable history model
 - Best of both worlds: local privacy + cloud power when you need it
 - Access the latest cloud models alongside your local ones
 
@@ -158,9 +161,11 @@ The architecture is built on three provider tiers. Every feature must work acros
 - "Free alternative" suggestions when local/self-hosted models suffice
 
 ### Organization & Productivity
-- Projects / Spaces for topic-based conversation grouping
+- Projects / Spaces as folder-backed workspaces
+- Portable plain-text chat history with restore on another device
 - Data export (JSON, Markdown, plain text)
-- Android share integration (send to and receive from other apps)
+- `AGENT.md` configuration per project folder
+- Platform share/import integration (send to and receive from other apps)
 - Text-to-speech for AI responses
 - Conversation templates and custom agents
 
@@ -210,10 +215,10 @@ The architecture is built on three provider tiers. Every feature must work acros
 
 | Channel | Audience |
 |---|---|
-| **Google Play Store** | Primary distribution |
+| **Google Play Store** | Android mobile distribution |
 | **F-Droid** | Privacy-focused users (local/self-hosted features only) |
-| **GitHub Releases** | Power users, beta testers |
-| **Direct APK** | Enterprise and restricted environments |
+| **GitHub Releases** | Power users, beta testers, and desktop builds |
+| **Direct installers / APKs** | Enterprise and restricted environments |
 
 ## Pricing Philosophy
 

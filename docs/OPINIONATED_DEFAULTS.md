@@ -1,6 +1,6 @@
 # Opinionated Defaults
 
-Sensible defaults for common Android app requirements. This document explains what's pre-configured and how to customize.
+Sensible defaults for common Flutter app requirements. This document explains what's pre-configured and how to customize, including Android-specific paths where relevant.
 
 ---
 
@@ -60,7 +60,8 @@ For Ollama and LM Studio running on local network, add domains:
 | Data Type | Storage | Rationale |
 |-----------|---------|-----------|
 | User preferences | SharedPreferences | Simple key-value, fast access |
-| Conversations | Local database (SQLite/Drift) | Structured, queryable data |
+| Saved conversations | Plain-text history files | Portable, readable source of truth |
+| Search/index cache | Local SQLite database | Structured, queryable, rebuildable cache for speed and FTS |
 | API keys | Encrypted storage | Security-sensitive credentials |
 | Cached models list | Local file system | Large, infrequently changing |
 | Cost tracking data | Local database | Structured, needs aggregation |
@@ -88,6 +89,7 @@ Never store API keys in SharedPreferences or plain text files.
 | Streaming | Enabled | Better perceived performance |
 | Markdown rendering | Enabled | AI responses use markdown |
 | Dark mode | System default | Respect OS preference |
+| Chat history save mode | Automatically | Simplest default; users can switch to prompt/manual |
 
 ---
 
@@ -99,7 +101,10 @@ Never store API keys in SharedPreferences or plain text files.
 | Network state permission | Enabled |
 | Camera, location, audio | Commented out |
 | HTTPS enforcement | Enabled (HTTP for localhost) |
+| Saved chat history | Plain-text files |
+| Search index/cache | SQLite (rebuildable) |
 | API key encryption | Required |
 | Provider default | Self-hosted (Ollama) |
 | Streaming responses | Enabled |
 | Cost warnings | Enabled |
+| Chat history save mode | Automatically |

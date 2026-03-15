@@ -125,7 +125,7 @@ Private Chat Hub serves users who want **choice** in how they access AI — from
 **Key Scenarios:**
 - Drafts client emails using cloud API at the office, switches to on-device model on the plane
 - Messages queue automatically when entering a dead zone, send when reconnected
-- Uses Android share intent to send AI summaries to Slack
+- Uses platform share/open flows to send AI summaries to Slack
 - Listens to long AI responses via text-to-speech while driving
 
 **Quote:** *"I need AI that works as hard as I do — on the train, at a client site, or at 30,000 feet."*

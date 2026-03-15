@@ -1,27 +1,32 @@
 # Architecture: Private Chat Hub v2
 
 **Status:** Design Specification — Clean Rebuild  
-**Scope:** Complete system architecture for a multi-provider AI chat application
+**Scope:** Complete system architecture for a multi-provider AI chat application on mobile and desktop
 
 ---
 
 ## 1. System Overview
 
-Private Chat Hub is a privacy-first Android app for chatting with AI models across
-multiple backends: on-device inference, self-hosted servers, cloud APIs, and gateway
-aggregators. The architecture treats every backend as an implementation of a single
-provider interface, routed through a central registry.
+Private Chat Hub is a privacy-first Flutter app for chatting with AI models across
+mobile and desktop devices. It connects to on-device inference, self-hosted servers,
+cloud APIs, and gateway aggregators through a single provider interface routed by a
+central registry.
+
+Saved chat history is durable as plain-text files. SQLite is a derived local
+index/cache used for fast search, browsing, temporary unsaved state, and rebuildable
+performance optimizations.
 
 ### System Context Diagram
 
 ```
                               ┌───────────────────┐
-                              │   Android User    │
+                              │ Mobile/Desktop    │
+                              │      User         │
                               └────────┬──────────┘
                                        │
                           ┌────────────▼────────────┐
                           │   Private Chat Hub      │
-                          │   (Flutter Android)     │
+                          │ (Flutter Mobile/Desktop)│
                           └──┬────┬────┬────┬────┬──┘
                              │    │    │    │    │
               ┌──────────────┘    │    │    │    └──────────────┐
@@ -46,7 +51,8 @@ provider interface, routed through a central registry.
 ├─────────────────────────────────────────────────────────────────────┤
 │  PROVIDER LAYER      ProviderRegistry ─► LLMProvider implementations│
 ├─────────────────────────────────────────────────────────────────────┤
-│  DATA LAYER          Repositories, Local DB, Preferences, Cache     │
+│  DATA LAYER          Repositories, History Files, SQLite Index,     │
+│                      Preferences, Cache                              │
 ├─────────────────────────────────────────────────────────────────────┤
 │  PLATFORM LAYER      HTTP clients, Platform channels, Native bridge │
 └─────────────────────────────────────────────────────────────────────┘
@@ -63,20 +69,25 @@ provider interface, routed through a central registry.
    (`ollama:llama3.2`, `openai:gpt-4o`, `local:gemma3-1b`). Routing is determined
    by parsing the prefix — not by a global mode switch.
 
-3. **Offline-first.** Conversations, messages, and queued sends persist locally.
-   The app remains fully functional with on-device models when no network is available.
+3. **File-backed, offline-first.** Saved conversations persist as plain-text
+   history files. SQLite accelerates search, browsing, sync detection, and
+   recoverable temporary state, but it is never the authoritative history store.
 
-4. **Capability-driven UI.** The interface adapts to what the selected model can do
+4. **Portable workspace model.** Chats live inside folder-backed projects. Each
+   project folder may contain `AGENT.md` as its local configuration, and the same
+   folder can be restored on another device without translation.
+
+5. **Capability-driven UI.** The interface adapts to what the selected model can do
    (streaming, vision, tool calling, etc.) rather than showing a fixed feature set.
 
-5. **Cost transparency.** Cloud API usage is tracked per-message with configurable
+6. **Cost transparency.** Cloud API usage is tracked per-message with configurable
    limits and warnings. Self-hosted and local providers report zero cost.
 
-6. **Fail gracefully.** When a provider is unavailable the system can fall back to
+7. **Fail gracefully.** When a provider is unavailable the system can fall back to
    an alternative provider, queue the message for later, or clearly tell the user
    what happened and what to do next.
 
-7. **Extension over modification.** New providers, tools, and features are added by
+8. **Extension over modification.** New providers, tools, and features are added by
    registering new implementations — not by editing core routing logic.
 
 ---
@@ -201,7 +212,7 @@ conversation's model.
 **Responsibilities:**
 - Accept a send request (conversation ID + user text)
 - Resolve the provider via the registry; if unhealthy → fallback or queue
-- Stream response chunks to the UI and persist each message
+- Stream response chunks to the UI and hand completed turns to file persistence
 - Delegate tool calls to `ToolService` and feed results back to the model
 - Record token usage via `CostService`
 
@@ -229,9 +240,20 @@ API keys configured) · Gateway Models (OpenCode).
 
 ### 4.3 Conversation Service
 
-CRUD for conversations and messages: create, rename, delete, archive, full-text
-search, export (JSON / Markdown / plain text), per-conversation system prompts,
+CRUD for conversations and messages across folder-backed projects. The service owns
+history-file save/restore behavior, project discovery, full-text search projections,
 and aggregate metadata (model used, token totals, timestamps).
+
+**Responsibilities:**
+- Create and update plain-text history files for saved chats
+- Parse history files into the canonical conversation/message model
+- Discover project folders and read local defaults from `AGENT.md`
+- Maintain SQLite-backed search/index projections derived from files
+- Import and reindex synced history folders restored from another device
+- Support save modes for automatic, prompted, or manual history creation
+- CRUD for conversations and messages: create, rename, delete, archive, full-text
+  search, export (native history / JSON / Markdown / plain text), per-conversation
+  system prompts, and aggregate metadata (model used, token totals, timestamps)
 
 ### 4.4 Tool Service
 
@@ -275,6 +297,8 @@ Central store for user preferences and provider configuration.
 - API key storage (delegated to platform secure storage)
 - Default model selection per provider type
 - Tool toggle states and UI preferences
+- Chat history save mode (`Automatically`, `Ask before saving`, `Only when I tap Save`)
+- Import/export defaults and local reindex requests
 
 **Connection management pattern** (shared by Ollama, LM Studio, OpenCode):
 - Each provider type supports multiple saved server profiles
@@ -285,6 +309,13 @@ Central store for user preferences and provider configuration.
 ---
 
 ## 5. Data Model
+
+The architecture distinguishes between the **durable file model** and the
+**derived SQLite model**:
+
+- **Durable:** plain-text history files inside folder-backed projects
+- **Derived:** SQLite records used for FTS/search, conversation lists, sync markers,
+  temporary unsaved chats, and other performance-sensitive views
 
 ### Key Entities
 
@@ -338,6 +369,45 @@ Central store for user preferences and provider configuration.
 └──────────────────┘
 ```
 
+The entities above are the logical application model and are cached/indexed in
+SQLite. Durable storage on disk follows a portable workspace layout:
+
+### Durable Workspace Layout
+
+```text
+<project-folder>/
+├── AGENT.md
+├── history/
+│   └── YYYY-MM-DD-<short-title>.md
+└── images/                  # optional, only when referenced by history
+```
+
+- `AGENT.md` stores project-local defaults and agent-like configuration.
+- `history/` contains the saved chat transcripts.
+- No sidecar metadata files are required beyond `AGENT.md` and any referenced
+  assets.
+
+### History File Format
+
+Saved chat history uses a Markdown-compatible plain-text format:
+
+```markdown
+# Chat Session: <topic or date>
+Started: YYYY-MM-DD HH:MM
+
+---
+
+## [YYYY-MM-DD HH:MM] <sender>
+
+<message body in markdown>
+```
+
+The parser must be block-aware:
+- `---` is a message separator only when it appears outside fenced code blocks
+- Message bodies preserve Markdown, code fences, and relative image paths
+- The same parser is used for both project chats and agent chats
+- SQLite-derived IDs and sync metadata stay in the cache/index, not in extra files
+
 ### Message Status State Machine
 
 ```
@@ -387,19 +457,21 @@ stream so the UI can show queue count and processing progress.
 
 | Concern | Approach |
 |---------|----------|
-| API key storage | Platform secure storage (Android Keystore) |
-| Data at rest | App-private storage; optional encryption for conversations |
+| API key storage | Platform secure storage |
+| Saved chat history | Plain-text files in app-local or user-managed synced folders; never uploaded by the app |
+| SQLite index/cache | Rebuildable local cache; safe to delete and regenerate from history files |
 | Network (cloud) | HTTPS enforced for all cloud API calls |
 | Network (LAN) | HTTPS toggle available; LAN assumed trusted by default |
 | Model files | Downloaded from trusted sources; checksum verification |
-| Queue data | Stored in app-private directory; no external access |
+| Queue data / temporary chats | Stored locally until sent, saved, or discarded according to save mode |
 
 ### 6.4 Performance
 
 **Caching:**
 - Model lists cached per-provider with configurable TTL (default 5 min)
-- Conversation list uses incremental updates, not full reload
+- Conversation list uses incremental updates from the SQLite projection, not full reload
 - Provider health status cached between polling intervals (30s)
+- FTS/search index is rebuilt from history files when imported or resynced
 
 **Streaming:**
 - All chat responses are streamed token-by-token to the UI
@@ -462,7 +534,8 @@ tracks its own token usage and timing metrics.
 | 4 | OpenCode integration | Gateway provider type, visually separated | Different trust/billing model from self-hosted servers |
 | 5 | Fallback strategy | Configurable chain per provider type | Balances convenience with user control over data flow |
 | 6 | State management | Riverpod providers | Already adopted; supports lazy init and dependency injection |
-| 7 | Local persistence | SQLite (conversations) + SharedPreferences (settings) | SQLite for structured queries/FTS; SharedPrefs for simple KV |
+| 7 | Local persistence | Plain-text history files + SQLite index/cache + SharedPreferences | Files are the source of truth; SQLite accelerates queries/FTS; SharedPrefs handles simple KV |
 | 8 | Streaming protocol | SSE / chunked HTTP depending on backend | Provider implementations normalise to a common `Stream<ChatResponse>` |
 | 9 | Connection model | Multi-server profiles per provider kind | Supports users with multiple Ollama/LM Studio boxes |
 | 10 | Cost tracking | Per-message recording with period-based limits | Gives users fine-grained visibility and automatic safety nets |
+| 11 | Project configuration | `AGENT.md` per project folder | Keeps project defaults portable with the history files |

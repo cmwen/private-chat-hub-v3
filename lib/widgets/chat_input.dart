@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../utils/platform_utils.dart';
 
 class ChatInput extends StatefulWidget {
   final void Function(String text) onSend;
@@ -47,9 +50,22 @@ class _ChatInputState extends State<ChatInput> {
     _focusNode.requestFocus();
   }
 
+  void _sendIfPossible() {
+    if (_hasText && widget.enabled && !widget.isStreaming) {
+      _send();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bindings = <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.enter, control: true):
+          _sendIfPossible,
+      const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+          _sendIfPossible,
+    };
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
@@ -64,26 +80,30 @@ class _ChatInputState extends State<ChatInput> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                enabled: widget.enabled && !widget.isStreaming,
-                maxLines: 5,
-                minLines: 1,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText:
-                      widget.isStreaming ? 'Waiting for response…' : 'Message…',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+              child: CallbackShortcuts(
+                bindings: bindings,
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  enabled: widget.enabled && !widget.isStreaming,
+                  maxLines: 5,
+                  minLines: 1,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: widget.isStreaming
+                        ? 'Waiting for response…'
+                        : 'Message…',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: theme.colorScheme.surfaceContainerHighest,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ),
@@ -99,7 +119,9 @@ class _ChatInputState extends State<ChatInput> {
               IconButton.filled(
                 onPressed: (_hasText && widget.enabled) ? _send : null,
                 icon: const Icon(Icons.send_rounded),
-                tooltip: 'Send',
+                tooltip: isDesktopPlatform
+                    ? 'Send (Ctrl+Enter or Cmd+Enter)'
+                    : 'Send',
               ),
           ],
         ),

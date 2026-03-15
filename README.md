@@ -42,7 +42,7 @@ Private Chat Hub gives you **privacy by choice**. Chat with on-device models for
 
 ## Platform
 
-Android (primary) — Material Design 3, dark/light themes, accessibility-first.
+Android, macOS, and Windows — adaptive Material Design 3 UI with compact mobile navigation and a persistent desktop sidebar on wider layouts.
 
 ## Documentation
 

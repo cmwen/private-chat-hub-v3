@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/conversation.dart';
 import '../providers/conversation_provider.dart';
 import '../utils/date_utils.dart' as date_utils;
 
 class ConversationDrawer extends ConsumerWidget {
-  const ConversationDrawer({super.key});
+  final bool embedded;
+
+  const ConversationDrawer({super.key, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final conversations = ref.watch(conversationsProvider);
     final activeId = ref.watch(activeConversationIdProvider);
     final theme = Theme.of(context);
-
-    return Drawer(
+    final content = SafeArea(
       child: Column(
         children: [
-          DrawerHeader(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
             decoration: BoxDecoration(
               color: theme.colorScheme.primaryContainer,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Icon(
                   Icons.forum_rounded,
@@ -40,7 +43,7 @@ class ConversationDrawer extends ConsumerWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: FilledButton.icon(
               onPressed: () async {
                 final conv = await ref
@@ -48,7 +51,9 @@ class ConversationDrawer extends ConsumerWidget {
                     .createConversation();
                 if (!context.mounted) return;
                 ref.read(activeConversationIdProvider.notifier).state = conv.id;
-                Navigator.of(context).pop();
+                if (!embedded) {
+                  Navigator.of(context).pop();
+                }
               },
               icon: const Icon(Icons.add),
               label: const Text('New Chat'),
@@ -79,9 +84,12 @@ class ConversationDrawer extends ConsumerWidget {
                       ],
                     ),
                   )
-                : _GroupedConversationList(
-                    conversations: conversations,
-                    activeId: activeId,
+                : Scrollbar(
+                    child: _GroupedConversationList(
+                      conversations: conversations,
+                      activeId: activeId,
+                      closeOnSelect: !embedded,
+                    ),
                   ),
           ),
           const Divider(height: 1),
@@ -89,28 +97,40 @@ class ConversationDrawer extends ConsumerWidget {
             leading: const Icon(Icons.settings_outlined),
             title: const Text('Settings'),
             onTap: () {
-              Navigator.of(context).pop();
+              if (!embedded) {
+                Navigator.of(context).pop();
+              }
               Navigator.of(context).pushNamed('/settings');
             },
           ),
         ],
       ),
     );
+
+    if (embedded) {
+      return Material(
+        color: theme.colorScheme.surfaceContainerLow,
+        child: content,
+      );
+    }
+
+    return Drawer(child: content);
   }
 }
 
 class _GroupedConversationList extends ConsumerWidget {
   final List<Conversation> conversations;
   final String? activeId;
+  final bool closeOnSelect;
 
   const _GroupedConversationList({
     required this.conversations,
     required this.activeId,
+    required this.closeOnSelect,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Groups in order: Today, Yesterday, Previous 7 Days, Older
     final grouped = date_utils.ConversationDateUtils.groupByDate(
       conversations,
       (c) => c.updatedAt,
@@ -125,6 +145,7 @@ class _GroupedConversationList extends ConsumerWidget {
             _ConversationTile(
               conversation: conv,
               isActive: conv.id == activeId,
+              closeOnSelect: closeOnSelect,
             ),
         ],
       ],
@@ -156,10 +177,12 @@ class _GroupHeader extends StatelessWidget {
 class _ConversationTile extends ConsumerWidget {
   final Conversation conversation;
   final bool isActive;
+  final bool closeOnSelect;
 
   const _ConversationTile({
     required this.conversation,
     required this.isActive,
+    required this.closeOnSelect,
   });
 
   @override
@@ -183,59 +206,63 @@ class _ConversationTile extends ConsumerWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
       ),
+      trailing: PopupMenuButton<_ConversationAction>(
+        tooltip: 'Conversation actions',
+        onSelected: (action) => _handleAction(context, ref, action),
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: _ConversationAction.rename,
+            child: _ConversationActionRow(
+              icon: Icons.edit_outlined,
+              label: 'Rename',
+            ),
+          ),
+          const PopupMenuItem(
+            value: _ConversationAction.archive,
+            child: _ConversationActionRow(
+              icon: Icons.archive_outlined,
+              label: 'Archive',
+            ),
+          ),
+          PopupMenuItem(
+            value: _ConversationAction.delete,
+            child: _ConversationActionRow(
+              icon: Icons.delete_outline,
+              label: 'Delete',
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+      ),
       onTap: () {
         ref.read(activeConversationIdProvider.notifier).state = conversation.id;
-        Navigator.of(context).pop();
+        if (closeOnSelect) {
+          Navigator.of(context).pop();
+        }
       },
-      onLongPress: () => _showActions(context, ref),
     );
   }
 
-  void _showActions(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Rename'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _showRenameDialog(context, ref);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.archive_outlined),
-              title: const Text('Archive'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                ref
-                    .read(conversationsProvider.notifier)
-                    .archiveConversation(conversation.id);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.delete_outline,
-                color: Theme.of(ctx).colorScheme.error,
-              ),
-              title: Text(
-                'Delete',
-                style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-              ),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                ref
-                    .read(conversationsProvider.notifier)
-                    .deleteConversation(conversation.id);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  void _handleAction(
+    BuildContext context,
+    WidgetRef ref,
+    _ConversationAction action,
+  ) {
+    switch (action) {
+      case _ConversationAction.rename:
+        _showRenameDialog(context, ref);
+        return;
+      case _ConversationAction.archive:
+        ref
+            .read(conversationsProvider.notifier)
+            .archiveConversation(conversation.id);
+        return;
+      case _ConversationAction.delete:
+        ref
+            .read(conversationsProvider.notifier)
+            .deleteConversation(conversation.id);
+        return;
+    }
   }
 
   void _showRenameDialog(BuildContext context, WidgetRef ref) {
@@ -269,3 +296,28 @@ class _ConversationTile extends ConsumerWidget {
     );
   }
 }
+
+class _ConversationActionRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  const _ConversationActionRow({
+    required this.icon,
+    required this.label,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 12),
+        Text(label, style: color != null ? TextStyle(color: color) : null),
+      ],
+    );
+  }
+}
+
+enum _ConversationAction { rename, archive, delete }

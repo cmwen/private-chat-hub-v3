@@ -7,7 +7,9 @@
 
 ## Document Overview
 
-This document defines the complete functional and non-functional requirements for Private Chat Hub — a privacy-first Android app for chatting with AI models across local, self-hosted, and cloud providers. Requirements are technology-agnostic, grouped by functional area, and prioritized using MoSCoW.
+This document defines the complete functional and non-functional requirements for Private Chat Hub — a privacy-first mobile and desktop app for chatting with AI models across local, self-hosted, and cloud providers. Requirements are technology-agnostic, grouped by functional area, and prioritized using MoSCoW.
+
+Saved chat history is stored as portable plain-text files. SQLite is used only as a local cache/index for speed, search, sync detection, and recoverable temporary state.
 
 **Requirement ID Format:** `AREA-NNN` (e.g., `CHAT-001`, `PROV-002`)
 
@@ -27,6 +29,7 @@ This document defines the complete functional and non-functional requirements fo
 - Chat auto-scrolls to the latest message
 - A loading/typing indicator is visible while the model is generating
 - Chat remains responsive (no UI freeze) during streaming
+- Saved conversations reopen from their plain-text history files across app restarts
 
 #### CHAT-002: Markdown & Code Rendering (Must Have)
 **Description:** AI responses render rich Markdown including code blocks, lists, tables, and links.
@@ -294,13 +297,14 @@ This document defines the complete functional and non-functional requirements fo
 - Filters available: date range, model used, provider
 
 #### CONV-005: Conversation Export (Must Have)
-**Description:** Users can export conversations in standard formats.
+**Description:** Users can export or move conversations in standard, portable formats.
 
 **Acceptance Criteria:**
-- Export formats include at minimum: JSON, Markdown, and plain text
+- Export formats include at minimum: native history file, JSON, Markdown, and plain text
 - Exported files include metadata (timestamps, model, provider)
 - Export of a single conversation and bulk export of all conversations are both supported
-- Export integrates with the platform share sheet
+- Export integrates with the platform share sheet or save dialog
+- Native history exports can be re-imported and restored by the app on another device
 
 #### CONV-006: Conversation Archive (Should Have)
 **Description:** Users can archive conversations to declutter the active list without deleting.
@@ -310,14 +314,33 @@ This document defines the complete functional and non-functional requirements fo
 - An "Archived" section or filter is available to view them
 - Archived conversations can be restored to the active list
 
-#### CONV-007: Android Share Integration (Must Have)
-**Description:** Conversations and messages integrate with the Android share sheet.
+#### CONV-007: Platform Share & Import Integration (Must Have)
+**Description:** Conversations, messages, and history files integrate with platform-native share and open/import flows on mobile and desktop.
 
 **Acceptance Criteria:**
-- User can share a full conversation or a single message
+- User can share or save a full conversation or a single message
 - Shared content includes text and images (if present)
-- The Android share sheet is invoked for target app selection
-- The app can receive shared text/images from other apps (share intent)
+- The mobile share sheet or desktop save/open surface is invoked as appropriate
+- The app can receive shared/opened text, images, and native history files from other apps
+
+#### CONV-008: File-Backed Chat History (Must Have)
+**Description:** Every saved conversation, project chat, and agent chat persists as a plain-text, Markdown-compatible history file.
+
+**Acceptance Criteria:**
+- Saved chat history is stored as files, not as the authoritative database record
+- The history format includes a session header, `Started:` line, per-message headings in the form `## [timestamp] sender`, and `---` separators between messages
+- Markdown, code fences, and relative image references are preserved exactly when saving and reopening
+- No sidecar metadata file is required beyond project `AGENT.md` and any referenced attachments/images
+
+#### CONV-009: History Import, Parse & Restore (Must Have)
+**Description:** The app can read, parse, and restore saved history files or synced project folders on another device.
+
+**Acceptance Criteria:**
+- User can open/import a native history file or a synced project folder created on another device
+- The parser reconstructs message order, roles, timestamps, and attachment references without manual editing
+- Restored histories render equivalently on mobile and desktop builds
+- Invalid or partial history files surface actionable errors without crashing the app
+- Restored histories are reindexed locally for search and browsing
 
 ---
 
@@ -440,21 +463,22 @@ This document defines the complete functional and non-functional requirements fo
 ### 1.9 Projects & Organization
 
 #### PROJ-001: Projects / Spaces (Should Have)
-**Description:** Users can organize conversations into named projects or spaces.
+**Description:** Users can organize conversations into named, folder-backed projects or spaces.
 
 **Acceptance Criteria:**
-- User can create, rename, and delete projects
-- Conversations can be moved into or out of a project
+- User can create, rename, and delete project folders
+- Conversations can be moved into or out of a project folder
 - The conversation list can be filtered by project
 - A default "General" project exists for unorganized conversations
 
-#### PROJ-002: Custom Agents / Personas (Could Have)
-**Description:** Users can create reusable agent profiles with preset system prompts and model preferences.
+#### PROJ-002: Project Configuration via `AGENT.md` (Should Have)
+**Description:** Each project folder can use `AGENT.md` to define local chat defaults and agent-like behavior.
 
 **Acceptance Criteria:**
-- User can create an agent with a name, system prompt, and default model
-- Starting a conversation with an agent pre-fills its configuration
-- Agents are listed in a dedicated section for quick access
+- User can create or import a project folder containing `AGENT.md`
+- `AGENT.md` can define project name, default system prompt, preferred model, and other local chat defaults
+- Agent chats and project chats use the same history file format and parser
+- Moving or syncing a project folder preserves its configuration and chat history together
 
 ---
 
@@ -464,7 +488,7 @@ This document defines the complete functional and non-functional requirements fo
 **Description:** Users can configure global app behavior.
 
 **Acceptance Criteria:**
-- Available settings include: theme (light/dark/system), default model, message font size, auto-save toggle
+- Available settings include: theme (light/dark/system), default model, message font size, storage/export controls
 - An "About" screen shows app version, licenses, and links
 - A "Clear All Data" option exists with confirmation dialog
 - Settings persist across restarts and take effect immediately
@@ -495,6 +519,15 @@ This document defines the complete functional and non-functional requirements fo
 - The wizard guides API key entry for cloud providers
 - The user can skip cloud setup entirely
 - Starter models are suggested based on configured providers
+
+#### SETT-005: Chat History Save Mode (Must Have)
+**Description:** Users can choose when chats become saved plain-text history files.
+
+**Acceptance Criteria:**
+- Save modes include at minimum: Automatically, Ask before saving, and Only when I tap Save
+- Automatic mode saves as the user chats; Ask/Manual modes keep temporary chats in cache until the user saves or discards them
+- Unsaved chats are clearly marked and excluded from export or sync until saved
+- Changing the save mode affects new chats only unless the user explicitly saves the current chat
 
 ---
 
@@ -544,15 +577,16 @@ This document defines the complete functional and non-functional requirements fo
 - No user data is sent to the app developer's servers — ever
 - Cloud API providers receive only the data necessary for inference
 - Conversation content is never included in crash reports or logs
-- All local data is encrypted at rest
+- Saved chat histories are stored locally as human-readable plain-text files and are never uploaded by the app
 
 **Acceptance Criteria:**
 - A network traffic audit shows no unexpected outbound requests
 - Crash reports contain no message content or API keys
+- Saved history files can be opened outside the app and still match in-app rendering
 
 #### SEC-002: Credential Security (Must Have)
 **Requirements:**
-- API keys are stored using platform secure storage (e.g., Android Keystore-backed)
+- API keys are stored using platform secure storage
 - API keys are never logged, displayed in full, or included in exports
 - HTTPS is enforced for all cloud API communication
 - HTTP connections to self-hosted instances trigger a visible warning
@@ -585,13 +619,14 @@ This document defines the complete functional and non-functional requirements fo
 
 #### REL-002: Data Integrity (Must Have)
 **Requirements:**
-- No conversation data is lost on app crash or force-stop
-- Database operations use transactions for atomicity
+- No saved conversation data is lost on app crash or force-stop
+- History file writes use atomic or append-safe operations
+- SQLite cache/index can be rebuilt from saved history files and `AGENT.md` project configuration
 - Corrupted data is detected and handled without crashing
 
 **Acceptance Criteria:**
-- Killing the app mid-stream does not corrupt the database
-- A recovery mechanism exists for detected corruption
+- Killing the app mid-save does not corrupt an already saved history file
+- A recovery and reindex mechanism exists for file-backed history and cache corruption
 
 #### REL-003: Offline Resilience (Must Have)
 **Requirements:**
@@ -638,7 +673,7 @@ This document defines the complete functional and non-functional requirements fo
 **Acceptance Criteria:**
 - Downloaded local models work with zero network connectivity
 - Model download requires network but inference does not
-- All conversation history is available offline
+- All saved conversation history is available offline from local history files
 
 #### OFF-002: Graceful Degradation for Cloud/Self-Hosted (Must Have)
 **Acceptance Criteria:**
@@ -650,19 +685,20 @@ This document defines the complete functional and non-functional requirements fo
 
 ### 2.6 Compatibility
 
-#### COMPAT-001: Android Version Support (Must Have)
-**Target:** Android 8.0 (API 26) and above
+#### COMPAT-001: Mobile & Desktop Platform Support (Must Have)
+**Target:** Shared Flutter codebase for supported mobile and desktop builds
 
 **Acceptance Criteria:**
-- App installs and runs on API 26+ devices
-- No use of APIs unavailable below the minimum SDK
+- App installs and runs on supported Android mobile builds and supported desktop builds
+- The same saved history file opens correctly on both mobile and desktop builds
+- Platform-native share, file open/save, and secure-storage integrations are used where available
 
 #### COMPAT-002: Device & Screen Support (Must Have)
-**Target:** Phones and tablets, 4.5"–12" screens, portrait and landscape
+**Target:** Phones, tablets, laptops, and desktop windows in portrait, landscape, and resizable layouts
 
 **Acceptance Criteria:**
 - Responsive layouts adapt to screen size and orientation
-- No content is cut off or inaccessible on supported screen sizes
+- No content is cut off or inaccessible on supported screen sizes or desktop window sizes
 
 ---
 
@@ -670,11 +706,11 @@ This document defines the complete functional and non-functional requirements fo
 
 | Item | Rationale |
 |---|---|
-| **iOS / Desktop support** | Android-first strategy; cross-platform adds complexity without validating core value |
+| **iOS support** | Mobile scope currently prioritizes Android while desktop support ships first |
 | **Image generation** | Niche use case; dependent on model support that is still evolving |
 | **Voice / speech input (STT)** | Adds significant complexity; TTS (output) is prioritized first |
 | **Multi-user / team features** | This is a personal/individual tool; collaboration is out of scope |
-| **Cloud sync of conversations** | Conflicts with privacy-first principle; local-only storage is intentional |
+| **Private Chat Hub-hosted cloud sync** | Portable file-based sync with the user's own tools is preferred over a vendor service |
 | **API gateway integration (LiteLLM, OpenRouter)** | Can be supported later via custom endpoint URL on existing providers |
 | **Internationalization (i18n)** | English-first; localization adds maintenance burden before product-market fit |
 | **Additional cloud providers (Mistral, Cohere, Groq)** | Extensible architecture supports future addition; focus on top 3 first |
@@ -685,8 +721,8 @@ This document defines the complete functional and non-functional requirements fo
 
 ## Appendix: Requirement Index
 
-**Must Have (40):** CHAT-001, CHAT-002, CHAT-004, CHAT-005, MODEL-001–004, PROV-001–003, PROV-005–008, PROV-010, CONV-001–003, CONV-005, CONV-007, TOOL-001, TOOL-002, TOOL-004, COST-001, SETT-001, SETT-002, PERF-001–003, SEC-001, SEC-002, REL-001–004, OFF-001, OFF-002, COMPAT-001, COMPAT-002
+**Must Have (43):** CHAT-001, CHAT-002, CHAT-004, CHAT-005, MODEL-001–004, PROV-001–003, PROV-005–008, PROV-010, CONV-001–003, CONV-005, CONV-007–009, TOOL-001, TOOL-002, TOOL-004, COST-001, SETT-001, SETT-002, SETT-005, PERF-001–003, SEC-001, SEC-002, REL-001–004, OFF-001, OFF-002, COMPAT-001, COMPAT-002
 
-**Should Have (21):** CHAT-003, CHAT-006, CHAT-007, MODEL-005, PROV-004, PROV-011, CONV-004, CONV-006, TOOL-003, COMP-001, COMP-002, COST-002–004, TTS-001, PROJ-001, SETT-003, SETT-004, SEC-003, ACC-001, ACC-002
+**Should Have (22):** CHAT-003, CHAT-006, CHAT-007, MODEL-005, PROV-004, PROV-011, CONV-004, CONV-006, TOOL-003, COMP-001, COMP-002, COST-002–004, TTS-001, PROJ-001, PROJ-002, SETT-003, SETT-004, SEC-003, ACC-001, ACC-002
 
-**Could Have (3):** MODEL-006, PROV-009, PROJ-002
+**Could Have (2):** MODEL-006, PROV-009

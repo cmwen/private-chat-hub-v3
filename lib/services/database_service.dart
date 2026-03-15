@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/conversation.dart';
 import '../models/message.dart';
+import '../utils/platform_utils.dart';
 
 class DatabaseService {
   static const _dbName = 'private_chat_hub.db';
@@ -32,7 +33,9 @@ class DatabaseService {
   }
 
   Future<String> _defaultPath() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = isDesktopPlatform
+        ? await getApplicationSupportDirectory()
+        : await getApplicationDocumentsDirectory();
     return p.join(dir.path, _dbName);
   }
 

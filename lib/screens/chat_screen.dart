@@ -7,6 +7,7 @@ import '../providers/chat_provider.dart';
 import '../providers/conversation_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/provider_registry.dart';
+import '../utils/platform_utils.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/message_bubble.dart';
@@ -57,12 +58,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  Future<void> _createConversation() async {
+    final settings = ref.read(settingsProvider);
+    final conv = await ref.read(conversationsProvider.notifier).createConversation(
+          title: 'New Chat',
+          modelId: settings.defaultModelId,
+        );
+    if (mounted) {
+      ref.read(activeConversationIdProvider.notifier).state = conv.id;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider);
     final activeId = ref.watch(activeConversationIdProvider);
     final messages =
         activeId != null ? ref.watch(messagesProvider(activeId)) : <Message>[];
+    final showDesktopLayout = isWideLayout(MediaQuery.sizeOf(context).width);
 
     if (chatState.status == ChatStatus.streaming) {
       _scrollToBottom();
@@ -78,62 +91,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'New Chat',
-            onPressed: () async {
-              final settings = ref.read(settingsProvider);
-              final conv = await ref
-                  .read(conversationsProvider.notifier)
-                  .createConversation(
-                    title: 'New Chat',
-                    modelId: settings.defaultModelId,
-                  );
-              if (mounted) {
-                ref.read(activeConversationIdProvider.notifier).state = conv.id;
-              }
-            },
+            onPressed: _createConversation,
           ),
         ],
       ),
-      drawer: const ConversationDrawer(),
-      body: Column(
+      drawer: showDesktopLayout ? null : const ConversationDrawer(),
+      body: Row(
         children: [
-          if (chatState.status == ChatStatus.error &&
-              chatState.errorMessage != null)
-            MaterialBanner(
-              content: Text(chatState.errorMessage!),
-              leading: const Icon(Icons.error_outline),
-              actions: [
-                TextButton(
-                  onPressed: () => ref.read(chatProvider.notifier).clearError(),
-                  child: const Text('Dismiss'),
-                ),
-              ],
+          if (showDesktopLayout) ...[
+            const SizedBox(
+              width: 320,
+              child: ConversationDrawer(embedded: true),
             ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ],
           Expanded(
-            child: messages.isEmpty && chatState.status == ChatStatus.idle
-                ? _EmptyState(onSendSample: (text) async {
-                    final convId = await _ensureConversation();
-                    if (mounted) {
-                      ref.read(chatProvider.notifier).sendMessage(text, convId);
-                    }
-                  })
-                : _MessageList(
-                    messages: messages,
-                    chatState: chatState,
-                    scrollController: _scrollController,
-                    showMarkdown: ref.watch(settingsProvider).markdownEnabled,
-                  ),
-          ),
-          ChatInput(
-            onSend: (text) async {
-              final convId = await _ensureConversation();
-              if (mounted) {
-                ref.read(chatProvider.notifier).sendMessage(text, convId);
-              }
-            },
-            isStreaming: chatState.status == ChatStatus.streaming,
-            enabled: chatState.status == ChatStatus.idle ||
-                chatState.status == ChatStatus.error,
-            onStop: () => ref.read(chatProvider.notifier).stopGeneration(),
+            child: _ChatPane(
+              chatState: chatState,
+              messages: messages,
+              scrollController: _scrollController,
+              showMarkdown: ref.watch(settingsProvider).markdownEnabled,
+              onSendSample: (text) async {
+                final convId = await _ensureConversation();
+                if (mounted) {
+                  ref.read(chatProvider.notifier).sendMessage(text, convId);
+                }
+              },
+              onSend: (text) async {
+                final convId = await _ensureConversation();
+                if (mounted) {
+                  ref.read(chatProvider.notifier).sendMessage(text, convId);
+                }
+              },
+              onDismissError: () => ref.read(chatProvider.notifier).clearError(),
+              onStop: () => ref.read(chatProvider.notifier).stopGeneration(),
+            ),
           ),
         ],
       ),
@@ -141,9 +137,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showModelPicker(BuildContext context) {
+    if (isWideLayout(MediaQuery.sizeOf(context).width)) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+            child: const _ModelPickerContent(),
+          ),
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => const _ModelPickerSheet(),
+      builder: (ctx) => const SafeArea(child: _ModelPickerContent()),
+    );
+  }
+}
+
+class _ChatPane extends StatelessWidget {
+  final ChatState chatState;
+  final List<Message> messages;
+  final ScrollController scrollController;
+  final bool showMarkdown;
+  final void Function(String text) onSendSample;
+  final void Function(String text) onSend;
+  final VoidCallback onDismissError;
+  final VoidCallback onStop;
+
+  const _ChatPane({
+    required this.chatState,
+    required this.messages,
+    required this.scrollController,
+    required this.showMarkdown,
+    required this.onSendSample,
+    required this.onSend,
+    required this.onDismissError,
+    required this.onStop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        if (chatState.status == ChatStatus.error && chatState.errorMessage != null)
+          MaterialBanner(
+            content: Text(chatState.errorMessage!),
+            leading: const Icon(Icons.error_outline),
+            actions: [
+              TextButton(
+                onPressed: onDismissError,
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        Expanded(
+          child: messages.isEmpty && chatState.status == ChatStatus.idle
+              ? _EmptyState(onSendSample: onSendSample)
+              : _MessageList(
+                  messages: messages,
+                  chatState: chatState,
+                  scrollController: scrollController,
+                  showMarkdown: showMarkdown,
+                ),
+        ),
+        ChatInput(
+          onSend: onSend,
+          isStreaming: chatState.status == ChatStatus.streaming,
+          enabled: chatState.status == ChatStatus.idle ||
+              chatState.status == ChatStatus.error,
+          onStop: onStop,
+        ),
+      ],
     );
   }
 }
@@ -163,7 +230,7 @@ class _MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
+    final list = ListView.builder(
       controller: scrollController,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: messages.length,
@@ -181,11 +248,27 @@ class _MessageList extends StatelessWidget {
         );
       },
     );
+
+    final content = isWideLayout(MediaQuery.sizeOf(context).width)
+        ? Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: list,
+            ),
+          )
+        : list;
+
+    return Scrollbar(
+      controller: scrollController,
+      thumbVisibility: isWideLayout(MediaQuery.sizeOf(context).width),
+      child: content,
+    );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  final Future<void> Function(String text) onSendSample;
+  final void Function(String text) onSendSample;
 
   const _EmptyState({required this.onSendSample});
 
@@ -242,8 +325,8 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ModelPickerSheet extends ConsumerWidget {
-  const _ModelPickerSheet();
+class _ModelPickerContent extends ConsumerWidget {
+  const _ModelPickerContent();
 
   String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -259,74 +342,67 @@ class _ModelPickerSheet extends ConsumerWidget {
       builder: (context, snapshot) {
         final models = snapshot.data ?? [];
 
-        // Group models by providerId, preserving insertion order.
         final grouped = <String, List<AiModel>>{};
         for (final model in models) {
           grouped.putIfAbsent(model.providerId, () => []).add(model);
         }
 
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Select Model',
-                  style: theme.textTheme.titleLarge,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Select Model',
+                style: theme.textTheme.titleLarge,
+              ),
+            ),
+            const Divider(height: 1),
+            if (models.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No models available'),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final entry in grouped.entries) ...[
+                      _ProviderHeader(
+                        providerId: entry.key,
+                        label: _capitalize(entry.key),
+                        registry: registry,
+                        theme: theme,
+                      ),
+                      for (final model in entry.value)
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.memory_outlined),
+                          title: Text(model.displayName),
+                          trailing: model.qualifiedId == chatState.selectedModelId
+                              ? const Icon(Icons.check_circle_rounded)
+                              : null,
+                          onTap: () {
+                            ref
+                                .read(chatProvider.notifier)
+                                .selectModel(model.qualifiedId);
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                    ],
+                  ],
                 ),
               ),
-              const Divider(height: 1),
-              if (models.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('No models available'),
-                )
-              else
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final entry in grouped.entries) ...[
-                        // Provider header row
-                        _ProviderHeader(
-                          providerId: entry.key,
-                          label: _capitalize(entry.key),
-                          registry: registry,
-                          theme: theme,
-                        ),
-                        // Model tiles for this provider
-                        for (final model in entry.value)
-                          ListTile(
-                            dense: true,
-                            visualDensity: VisualDensity.compact,
-                            leading: const Icon(Icons.memory_outlined),
-                            title: Text(model.displayName),
-                            trailing:
-                                model.qualifiedId == chatState.selectedModelId
-                                    ? const Icon(Icons.check_circle_rounded)
-                                    : null,
-                            onTap: () {
-                              ref
-                                  .read(chatProvider.notifier)
-                                  .selectModel(model.qualifiedId);
-                              Navigator.of(context).pop();
-                            },
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          ],
         );
       },
     );
   }
 }
 
-/// Header row shown once per provider group in [_ModelPickerSheet].
 class _ProviderHeader extends StatelessWidget {
   final String providerId;
   final String label;
@@ -342,7 +418,6 @@ class _ProviderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use a representative qualified ID to look up provider status.
     final provider = registry.getProvider(providerId);
     final isReady = provider?.currentStatus == ProviderStatus.ready;
 

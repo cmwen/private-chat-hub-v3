@@ -57,5 +57,6 @@ void main() {
 
       expect(find.text('Settings'), findsWidgets);
     });
+
   });
 }

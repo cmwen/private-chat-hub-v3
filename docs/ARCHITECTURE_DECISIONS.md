@@ -9,9 +9,9 @@
 
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
-| 001 | Mobile-first Android platform | Accepted | 2025-12-31 |
+| 001 | Mobile-first Android platform | Superseded | 2025-12-31 |
 | 002 | Provider abstraction pattern | Accepted | 2025-12-31 |
-| 003 | Local-first data storage | Accepted | 2025-12-31 |
+| 003 | Local-first data storage | Superseded | 2025-12-31 |
 | 004 | Streaming-first chat experience | Accepted | 2025-12-31 |
 | 005 | Material Design 3 | Accepted | 2025-12-31 |
 | 006 | Provider registry pattern | Accepted | 2026-01-26 |
@@ -26,6 +26,8 @@
 | 015 | TTS integration approach | Accepted | 2026-01-26 |
 | 016 | Conversation data model | Accepted | 2026-01-26 |
 | 017 | Project organization pattern | Accepted | 2026-01-26 |
+| 018 | File-backed portable history | Accepted | 2026-03-15 |
+| 019 | Mobile + desktop platform scope | Accepted | 2026-03-15 |
 
 ---
 
@@ -33,7 +35,7 @@
 
 ### ADR-001: Mobile-First Android Platform
 
-**Status:** Accepted
+**Status:** Superseded by ADR-019
 **Date:** 2025-12-31
 
 **Context:** Private Chat Hub targets privacy-conscious users who chat with self-hosted AI models via Ollama. We needed to decide on initial platform scope. Building for all platforms simultaneously would increase the testing matrix, slow iteration, and dilute focus. However, locking into Android-only code would make future expansion costly.
@@ -77,7 +79,7 @@
 
 ### ADR-003: Local-First Data Storage
 
-**Status:** Accepted
+**Status:** Superseded by ADR-018
 **Date:** 2025-12-31
 
 **Context:** The core value proposition is privacy. Conversations, settings, and model metadata must never leave the device unless the user explicitly sends a message to a remote model. We also needed an offline story: if the Ollama server is unreachable the app should still browse history, search, and queue messages.
@@ -381,7 +383,7 @@
 
 **Context:** With multiple providers, each using different message formats (OpenAI's `role`/`content`, Anthropic's `content` blocks with separate system handling, Google's `parts`-based structure), we needed a single canonical message format that the app stores, displays, and can translate to any provider's wire format.
 
-**Decision:** Define a provider-agnostic `Message` entity with a `role` enum (`user`, `assistant`, `system`, `tool`), a `content` field (text), optional structured fields for `images` (list of file paths), `toolCalls` (list of tool invocation records), and `toolResults` (list of tool execution results). Each provider adapter translates to/from this canonical format. The `messages` table stores this format in SQLite. Token counts, provider ID, model ID, and cost are stored as metadata on each message but are not part of the canonical content.
+**Decision:** Define a provider-agnostic `Message` entity with a `role` enum (`user`, `assistant`, `system`, `tool`), a `content` field (text), optional structured fields for `images` (list of file paths), `toolCalls` (list of tool invocation records), and `toolResults` (list of tool execution results). Each provider adapter translates to/from this canonical format. The canonical model is serialized into the durable history-file format and projected into SQLite for search, list views, and other derived behaviors. Token counts, provider ID, model ID, and cost are stored as metadata on each message but are not part of the canonical content.
 
 **Alternatives Considered:**
 - **Store raw provider-specific JSON:** Preserves maximum fidelity, but makes cross-provider queries, search, and display logic provider-aware throughout the codebase.
@@ -420,13 +422,61 @@
 
 ---
 
+### ADR-018: File-Backed Portable History
+
+**Status:** Accepted
+**Date:** 2026-03-15
+
+**Context:** Private Chat Hub now treats saved conversation history as a portable asset that users should be able to read, sync, and restore on another device without relying on the app's database. The product direction explicitly calls for plain-text history files, SQLite only for speed/cache, folder-local `AGENT.md` project configuration, and no extra sidecar files beyond what the history actually needs. Analysis of the sibling `opencode-chat` project showed a Markdown-compatible history proposal worth adopting, even though that repository does not yet use it as its canonical runtime format.
+
+**Decision:** Store every saved project chat and agent chat as a Markdown-compatible plain-text history file inside a folder-backed project workspace. Each project folder may contain `AGENT.md` as its local configuration. SQLite remains a derived local index/cache for search, conversation lists, sync markers, and temporary unsaved chats, and it must be fully rebuildable from the file store. The history parser is fence-aware, preserves relative asset paths, and uses the same logic for project chats and agent chats.
+
+**Alternatives Considered:**
+- **SQLite as the source of truth:** Fast and structured, but not portable, not human-readable, and a poor fit for user-managed sync/restore.
+- **JSON sidecar manifests per chat:** Easier to parse, but creates unnecessary extra files and makes manual inspection less pleasant.
+- **First-party cloud sync service:** Could simplify multi-device flows, but conflicts with the product's privacy-first stance and would introduce hosted-state complexity.
+
+**Consequences:**
+- ✅ Users own a readable, diffable, portable conversation history format.
+- ✅ Restoring a project on another device requires only the folder, not a database export.
+- ✅ The same parser and renderer serve project chats and agent chats.
+- ✅ SQLite can be dropped and rebuilt without losing saved history.
+- ⚠️ Parsing must be Markdown-aware enough to ignore separator-like lines inside code fences.
+- ⚠️ Conflict detection is required when the same folder is edited on multiple devices.
+- ⚠️ Temporary unsaved chats live only in cache until the chosen save mode persists them.
+
+---
+
+### ADR-019: Mobile + Desktop Platform Scope
+
+**Status:** Accepted
+**Date:** 2026-03-15
+
+**Context:** The product now targets both mobile and desktop usage. The existing Android-first framing is too narrow for the current direction, especially once portable history files and folder-backed projects allow the same workspace to move between phone and desktop environments.
+
+**Decision:** Support an adaptive Flutter experience across mobile and desktop, with Android plus supported desktop platforms as the primary delivery targets. Core product behavior, file formats, and workspace semantics must remain platform-neutral, while share/import, secure storage, and file open/save surfaces use each platform's native integration points.
+
+**Alternatives Considered:**
+- **Remain Android-only:** Smaller QA matrix, but no longer matches the product's cross-device use case.
+- **Desktop-only focus:** Strong file-system ergonomics, but loses the privacy and utility advantages of a mobile companion.
+- **Web-first implementation:** Easier sharing, but weaker offline guarantees and a poorer fit for local models and platform-native storage.
+
+**Consequences:**
+- ✅ A single workspace can move between mobile and desktop without conversion.
+- ✅ UX decisions now prioritize adaptive layouts rather than Android-only assumptions.
+- ✅ Platform-native import/export flows become part of the core experience.
+- ⚠️ The QA matrix expands significantly across screen sizes and desktop window states.
+- ⚠️ Platform-specific integrations must stay behind abstractions to avoid UI drift.
+
+---
+
 ## Decision Log Summary
 
 | ADR | Decision | Date | Status | Owner |
 |-----|----------|------|--------|-------|
-| 001 | Mobile-first Android platform | 2025-12-31 | ✅ Accepted | @product-owner |
+| 001 | Mobile-first Android platform | 2025-12-31 | ♻️ Superseded | @product-owner |
 | 002 | Provider abstraction pattern | 2025-12-31 | ✅ Accepted | @architect |
-| 003 | Local-first data storage (SQLite + FTS5) | 2025-12-31 | ✅ Accepted | @architect |
+| 003 | Local-first data storage (SQLite + FTS5) | 2025-12-31 | ♻️ Superseded | @architect |
 | 004 | Streaming-first chat experience | 2025-12-31 | ✅ Accepted | @architect |
 | 005 | Material Design 3 theming | 2025-12-31 | ✅ Accepted | @experience-designer |
 | 006 | Provider registry pattern | 2026-01-26 | ✅ Accepted | @architect |
@@ -441,6 +491,8 @@
 | 015 | TTS integration (platform-native default) | 2026-01-26 | ✅ Accepted | @architect |
 | 016 | Conversation data model (provider-agnostic) | 2026-01-26 | ✅ Accepted | @architect |
 | 017 | Project organization (layer-first) | 2026-01-26 | ✅ Accepted | @architect |
+| 018 | File-backed portable history | 2026-03-15 | ✅ Accepted | @architect |
+| 019 | Mobile + desktop platform scope | 2026-03-15 | ✅ Accepted | @product-owner |
 
 ---
 

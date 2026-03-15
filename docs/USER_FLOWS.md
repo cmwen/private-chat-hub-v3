@@ -193,7 +193,7 @@ Settings → Providers. Add, edit, test, set default, delete.
 **Key decisions:**
 - First server auto-defaults; changing default demotes previous (snackbar undo).
 - Health checks run in background (60s interval); status dots update in real time.
-- API keys stored via Android Keystore-backed secure storage; never exported.
+- API keys stored via platform secure storage; never exported.
 
 ---
 
@@ -303,6 +303,7 @@ Create, browse, search, archive, and delete conversations from the drawer.
 
 **Key decisions:**
 - Auto-title from first user message (~40 chars); editable via rename.
+- Save mode controls when a conversation becomes durable plain-text history.
 - Archive removes from main list but keeps data; delete is permanent with confirmation.
 - Full-text search across all message content with highlighted snippets.
 
@@ -310,7 +311,7 @@ Create, browse, search, archive, and delete conversations from the drawer.
 
 ## 7. Project Organization
 
-Group conversations by topic or purpose.
+Group conversations by topic or purpose in folder-backed projects.
 
 ```
    Drawer (long-press conversation)
@@ -348,7 +349,7 @@ Group conversations by topic or purpose.
 **Key decisions:**
 - "All Conversations" is always the default view — projects are optional filters.
 - A conversation belongs to at most one project at a time.
-- Projects are lightweight: name + color. No nested hierarchy.
+- Projects are lightweight: name + color, backed by a folder that may include `AGENT.md`.
 
 ---
 
@@ -496,17 +497,22 @@ All configuration grouped under a single scrollable screen.
    │   ├── Context length
    │   └── Default system prompt
    │
-   └── DATA & PRIVACY
-       ├── Export conversations (JSON / Markdown / Plain Text)
-       ├── Storage usage
-       ├── Cloud cost summary (monthly)  ──▶ [Flow 8]
-       ├── Clear conversations (confirmation dialog)
-       └── Clear cache
+    └── DATA & PRIVACY
+        ├── Chat History
+        │   ├── When to save: Auto / Ask / Manual
+        │   ├── Back up or move chats
+        │   └── Rebuild search index
+        ├── Export conversations (native history / JSON / Markdown / Plain Text)
+        ├── Storage usage (saved history / temporary cache)
+        ├── Cloud cost summary (monthly)  ──▶ [Flow 8]
+        ├── Clear conversations (confirmation dialog)
+        └── Clear cache
 ```
 
 **Key decisions:**
 - Chat presets (Creative/Balanced/Precise) hide raw sliders by default — advanced toggle reveals them.
 - MCP tool permissions are per-tool: auto-allow, require confirmation, or deny.
+- Chat history save mode affects new chats only; unsaved temporary chats are excluded from export.
 - Export and clear are destructive — both require explicit confirmation.
 
 ---

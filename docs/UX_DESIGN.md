@@ -1,7 +1,7 @@
 # UX Design: Private Chat Hub
 
-**Version:** 3.0 (Consolidated)  
-**Design Language:** Material Design 3 · **Platform:** Android (mobile-first) · **Theme:** Dark mode primary, light supported
+**Version:** 3.1 (Consolidated)  
+**Design Language:** Material Design 3 · **Platform:** Adaptive mobile + desktop · **Theme:** Dark mode primary, light supported
 
 ---
 
@@ -28,7 +28,7 @@ App
 │   ├── Message input bar (text, attachments, tool indicators)
 │   ├── Model chip in app bar (tap to open picker)
 │   └── Tool toggle FAB (bottom-right)
-├── Navigation Drawer (swipe from left edge)
+├── Navigation Drawer / Sidebar
 │   ├── Conversations (grouped by date)
 │   ├── New Chat action
 │   ├── Running Tasks (badge count, only when active)
@@ -42,7 +42,8 @@ App
 │   ├── Tools & Capabilities (Web Search, MCP Servers)
 │   ├── Text-to-Speech
 │   ├── Appearance · Chat · Data & Privacy · About
-├── Projects (conversation grouping)
+│   └── Chat History (save mode, export/move, rebuild index)
+├── Projects (folder-backed conversation grouping)
 └── Search (full-text across conversations)
 ```
 
@@ -238,11 +239,22 @@ Parameter presets (Creative/Balanced/Precise). Advanced toggle reveals raw slide
 
 #### Data & Privacy
 
-Export conversations (JSON/Markdown/Plain Text), storage usage, clear conversations (confirmation), clear cache. Monthly cloud cost summary when applicable.
+**Chat History**
+- **When to save chat history:** Automatically (default), Ask before saving, Only when I tap Save
+- **Storage note:** "Saved chats are stored as plain-text files on this device."
+- **Back up or move chats:** Export or open the project/history folder with platform-native save/share flows
+- **Rebuild search index:** Recreate the local SQLite cache/index from saved history files
+
+**Data tools**
+- Export conversations (native history / JSON / Markdown / plain text)
+- Storage usage split by Saved chat history and Temporary cache
+- Clear conversations (confirmation)
+- Clear cache
+- Monthly cloud cost summary when applicable
 
 ### 3.5 Projects
 
-Group related conversations. Project list: name, color, count. "All Conversations" always at top. Assign via drawer long-press → "Move to Project."
+Group related conversations in folder-backed projects. Project list: name, color, count. "All Conversations" always at top. Assign via drawer long-press → "Move to Project." Each project folder may contain `AGENT.md` to define local defaults for new chats.
 
 ---
 
@@ -291,7 +303,7 @@ Appear below AI messages when TTS is enabled in settings.
 ### 4.6 Message Actions (Long-Press)
 
 **User messages:** Copy, Edit (re-send modified), Delete.
-**AI messages:** Copy, Share (Android share sheet; plain/markdown/HTML), Regenerate, Listen (if TTS enabled), Delete.
+**AI messages:** Copy, Share/Save (platform-native share or save; native history/plain/markdown/HTML), Regenerate, Listen (if TTS enabled), Delete.
 **Code blocks:** Copy icon on the block copies just that block; long-pressing the whole message opens full context menu.
 
 ---
@@ -308,7 +320,7 @@ Same flow with API Key field instead of Server Type. Emphasizes gateway concept.
 
 ### 5.3 API Key Security
 
-Keys stored via Android Keystore-backed secure storage. Masked fields with reveal toggle. Never exported or synced.
+Keys stored via platform secure storage. Masked fields with reveal toggle. Never exported or synced.
 
 ### 5.4 Provider Health
 
@@ -320,13 +332,13 @@ Background health checks (default 60s interval). Status reflected on server card
 
 ### 6.1 Primary Navigation
 
-**Drawer navigation** (not bottom tabs). Maximizes chat space, natural fit for conversation lists, matches ChatGPT/Claude expectations. Opens via hamburger icon or edge swipe.
+**Adaptive navigation** uses a drawer on mobile and a persistent sidebar or split-pane layout on larger desktop/tablet windows. This keeps conversation access fast without sacrificing chat space.
 
 **Quick actions without opening drawer:** Model chip → picker (1 tap). Tool FAB → toggle (1 tap). Settings gear → settings (1 tap).
 
 ### 6.2 Conversation Lifecycle
 
-New Chat → messages auto-save after each exchange → conversation appears in drawer → auto-titled from first message → assignable to project. Long-press for rename, archive, delete (confirmation dialog for destructive action).
+New Chat → save behavior follows the Chat History setting → saved conversations appear in drawer/sidebar → auto-titled from first message → assignable to project. In Ask before saving or manual mode, leaving the chat prompts Save / Discard / Cancel or shows an explicit Save action. Long-press for rename, archive, delete (confirmation dialog for destructive action).
 
 ### 6.3 First-Time Setup
 
@@ -349,9 +361,9 @@ All errors are inline — never modal dialogs.
 
 ## 7. Responsive Design & Themes
 
-**Layout:** Single-column portrait (360–412 dp). Landscape supported but not optimized. Comparison mode: horizontal split (2 models) or tabs (3–4).
+**Layout:** Single-column portrait on phones, expanded panes on tablets and desktop windows, and responsive resizing for landscape and desktop use. Comparison mode: horizontal split (2 models) or tabs (3–4).
 
-**Color System:** Material 3 tokens with dynamic color (Material You) on Android 12+. Primary (buttons, user bubbles), Surface (backgrounds, AI bubbles), Error (failures), custom green/amber for connection status. Color reserved for semantic meaning — no decorative colors.
+**Color System:** Material 3 tokens with dynamic color where supported. Primary (buttons, user bubbles), Surface (backgrounds, AI bubbles), Error (failures), custom green/amber for connection status. Color reserved for semantic meaning — no decorative colors.
 
 **Typography:** System default (Roboto) + monospace for code. Base spacing: 4 dp. Respects system font scaling.
 
@@ -379,7 +391,7 @@ All errors are inline — never modal dialogs.
 |----------|--------|-----------|
 | Navigation | Drawer, not bottom tabs | More chat space, matches ChatGPT/Claude pattern |
 | Model access | App bar chip | 2-tap workflow for frequent switching |
-| Message actions | Long-press, not swipe | Standard Android, avoids drawer gesture conflict |
+| Message actions | Long-press, not swipe | Works across touch and pointer input without conflicting with navigation gestures |
 | Error display | Inline, not modal | Non-blocking, contextual, actionable |
 | Onboarding | 3 screens max | Users want to chat, not read tutorials |
 | Provider grouping | Remote (Ollama + LM Studio) vs Cloud (OpenCode) | Self-hosted vs gateway mental model |
@@ -389,3 +401,4 @@ All errors are inline — never modal dialogs.
 | TTS placement | Controls on message + global settings | Contextual play, app-wide preferences |
 | Server management | Multi-server list per provider | Uniform add/edit/delete/default pattern |
 | Model picker | One unified bottom sheet | No separate screens per provider, filter chips instead |
+| Chat history save mode | Automatic by default, overridable in Settings | Keeps the default simple while allowing privacy-conscious manual control |

@@ -1,6 +1,6 @@
 # UX Component Specification: Private Chat Hub
 
-**Design System:** Material Design 3 · **Platform:** Android (mobile-first) · **Theme:** Dark mode primary, light supported
+**Design System:** Material Design 3 · **Platform:** Adaptive mobile + desktop · **Theme:** Dark mode primary, light supported
 
 ---
 
@@ -44,7 +44,7 @@ Streaming (with cursor):                  │  └──────────
 **Purpose:** Long-press context menu on a message.
 
 - **User messages:** Copy, Edit & Resend, Delete.
-- **AI messages:** Copy, Share, Regenerate, Listen (if TTS enabled), Delete.
+- **AI messages:** Copy, Share/Save, Regenerate, Listen (if TTS enabled), Delete.
 
 Delete requires confirmation. Each item ≥48 dp. Focus order matches visual order.
 
@@ -214,7 +214,7 @@ Single row: auto-generated title (~40 chars), model badge, timestamp. Long-press
 
 ### 5.3 ProjectCard
 
-Group conversations by project. Shows: color dot, name, count. "All Conversations" always first. Assign via long-press → "Move to..." Tap to filter conversation list.
+Group conversations by folder-backed project. Shows: color dot, name, count. "All Conversations" always first. Assign via long-press → "Move to..." Tap to filter conversation list.
 
 ---
 
@@ -243,6 +243,29 @@ Individual row within a provider section. Same health indicator pattern as §3.5
 
 Segmented button: System / Dark / Light — applies immediately. Dynamic Color (Material You) toggle (Android 12+). Font size dropdown: Default, Small, Large, Extra Large.
 
+### 6.4 ChatHistorySettingsPanel
+
+**Purpose:** Data & Privacy subsection for controlling when chats become saved plain-text history files.
+
+```
+Chat History
+  When to save chat history    Automatically ▾
+  Saved chats are stored as plain-text files on this device.
+  Back up or move chats        >
+  Rebuild search index         >
+```
+
+**Save mode options:**
+- **Automatically** — save chat history to this device as you chat
+- **Ask before saving** — prompt Save / Discard / Cancel when leaving
+- **Only when I tap Save** — keep the chat temporary until user saves it
+
+**States:** Default/automatic, prompt-on-leave, manual/temporary, export disabled when no saved chats exist, recovered temporary chat ("Recovered temporary chat — save to keep it.").
+
+**Interactions:** Tapping the save-mode row opens a bottom sheet or radio dialog. "Back up or move chats" opens the existing export flow. "Rebuild search index" rebuilds the local SQLite cache/index from saved files.
+
+**A11y:** "When to save chat history. Current setting: Automatically." Helper text is read after the control summary.
+
 ---
 
 ## 7. Feedback Components
@@ -265,7 +288,7 @@ No provider configured.                      [Set up now]
 
 Contextual placeholder per screen. Simple monochrome icon + message + optional action button.
 
-- **Chat:** "Start a conversation. Your data stays on your device. [Choose a Model]"
+- **Chat:** "Start a conversation. Saved chat history stays on this device. [Choose a Model]"
 - **Drawer:** "No conversations yet. Start chatting!"
 - **Model picker:** "Set up a provider in Settings to get started."
 - **Search:** "No results for '{query}'. Try different terms."
