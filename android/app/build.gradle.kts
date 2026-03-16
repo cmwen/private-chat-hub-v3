@@ -14,7 +14,7 @@ val releaseSigningAvailable =
 
 plugins {
     id("com.android.application")
-    // AGP 9+ provides built-in Kotlin support, so only the Android plugin is applied here.
+    // Kotlin support is provided via AGP compatibility mode for this project and its plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -26,10 +26,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
