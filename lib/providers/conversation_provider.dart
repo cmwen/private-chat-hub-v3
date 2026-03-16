@@ -2,26 +2,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/conversation.dart';
 import '../models/message.dart';
+import '../services/chat_history_file_service.dart';
 import '../services/conversation_service.dart';
 import '../services/database_service.dart';
+import 'settings_provider.dart';
 
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
   return DatabaseService();
 });
 
+final chatHistoryFileServiceProvider = Provider<ChatHistoryFileService>((ref) {
+  return const ChatHistoryFileService();
+});
+
 final conversationServiceProvider = Provider<ConversationService>((ref) {
-  return ConversationService(ref.watch(databaseServiceProvider));
+  return ConversationService(
+    ref.watch(databaseServiceProvider),
+    historyFileService: ref.watch(chatHistoryFileServiceProvider),
+  );
 });
 
 final conversationsProvider =
     StateNotifierProvider<ConversationsNotifier, List<Conversation>>((ref) {
-  return ConversationsNotifier(ref.watch(conversationServiceProvider));
+  return ConversationsNotifier(ref, ref.watch(conversationServiceProvider));
 });
 
 class ConversationsNotifier extends StateNotifier<List<Conversation>> {
+  final Ref _ref;
   final ConversationService _service;
 
-  ConversationsNotifier(this._service) : super([]) {
+  ConversationsNotifier(this._ref, this._service) : super([]) {
     _load();
   }
 
@@ -45,6 +55,7 @@ class ConversationsNotifier extends StateNotifier<List<Conversation>> {
   Future<void> deleteConversation(String id) async {
     await _service.deleteConversation(id);
     await _load();
+    _ref.invalidate(savedHistoryExistsProvider(id));
   }
 
   Future<void> archiveConversation(String id) async {
@@ -55,6 +66,17 @@ class ConversationsNotifier extends StateNotifier<List<Conversation>> {
   Future<void> renameConversation(String id, String newTitle) async {
     await _service.renameConversation(id, newTitle);
     await _load();
+    await _maybeAutoSaveConversation(id);
+  }
+
+  Future<void> _maybeAutoSaveConversation(String conversationId) async {
+    final saveMode = _ref.read(settingsProvider).chatHistorySaveMode;
+    if (saveMode != ChatHistorySaveMode.automatic) {
+      return;
+    }
+
+    await _service.saveConversationSnapshot(conversationId);
+    _ref.invalidate(savedHistoryExistsProvider(conversationId));
   }
 }
 
@@ -94,3 +116,10 @@ class MessagesNotifier extends StateNotifier<List<Message>> {
     await _load();
   }
 }
+
+final savedHistoryExistsProvider = FutureProvider.family<bool, String>((
+  ref,
+  conversationId,
+) {
+  return ref.watch(conversationServiceProvider).hasSavedHistory(conversationId);
+});

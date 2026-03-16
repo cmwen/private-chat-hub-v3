@@ -1,12 +1,39 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ChatHistorySaveMode { automatic, askBeforeSaving, manualOnly }
+
+extension ChatHistorySaveModeX on ChatHistorySaveMode {
+  String get label {
+    switch (this) {
+      case ChatHistorySaveMode.automatic:
+        return 'Automatically';
+      case ChatHistorySaveMode.askBeforeSaving:
+        return 'Ask before saving';
+      case ChatHistorySaveMode.manualOnly:
+        return 'Only when I tap Save';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case ChatHistorySaveMode.automatic:
+        return 'Save chat history to this device as you chat.';
+      case ChatHistorySaveMode.askBeforeSaving:
+        return 'Prompt Save, Discard, or Cancel when leaving a chat.';
+      case ChatHistorySaveMode.manualOnly:
+        return 'Keep chats temporary until you choose Save.';
+    }
+  }
+}
+
 class AppSettings {
   final bool streamingEnabled;
   final bool markdownEnabled;
   final double temperature;
   final String defaultModelId;
   final String ollamaBaseUrl;
+  final ChatHistorySaveMode chatHistorySaveMode;
 
   const AppSettings({
     this.streamingEnabled = true,
@@ -14,6 +41,7 @@ class AppSettings {
     this.temperature = 0.7,
     this.defaultModelId = 'mock:default',
     this.ollamaBaseUrl = '',
+    this.chatHistorySaveMode = ChatHistorySaveMode.automatic,
   });
 
   AppSettings copyWith({
@@ -22,6 +50,7 @@ class AppSettings {
     double? temperature,
     String? defaultModelId,
     String? ollamaBaseUrl,
+    ChatHistorySaveMode? chatHistorySaveMode,
   }) {
     return AppSettings(
       streamingEnabled: streamingEnabled ?? this.streamingEnabled,
@@ -29,6 +58,7 @@ class AppSettings {
       temperature: temperature ?? this.temperature,
       defaultModelId: defaultModelId ?? this.defaultModelId,
       ollamaBaseUrl: ollamaBaseUrl ?? this.ollamaBaseUrl,
+      chatHistorySaveMode: chatHistorySaveMode ?? this.chatHistorySaveMode,
     );
   }
 }
@@ -41,6 +71,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kTemperature = 'settings.temperature';
   static const _kDefaultModel = 'settings.defaultModelId';
   static const _kOllamaUrl = 'settings.ollamaBaseUrl';
+  static const _kChatHistorySaveMode = 'settings.chatHistorySaveMode';
 
   SettingsNotifier(this._prefs) : super(_load(_prefs));
 
@@ -50,7 +81,19 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         temperature: prefs.getDouble(_kTemperature) ?? 0.7,
         defaultModelId: prefs.getString(_kDefaultModel) ?? 'mock:default',
         ollamaBaseUrl: prefs.getString(_kOllamaUrl) ?? '',
+        chatHistorySaveMode: _parseChatHistorySaveMode(
+          prefs.getString(_kChatHistorySaveMode),
+        ),
       );
+
+  static ChatHistorySaveMode _parseChatHistorySaveMode(String? rawValue) {
+    for (final mode in ChatHistorySaveMode.values) {
+      if (mode.name == rawValue) {
+        return mode;
+      }
+    }
+    return ChatHistorySaveMode.automatic;
+  }
 
   Future<void> setStreaming(bool value) async {
     await _prefs.setBool(_kStreaming, value);
@@ -77,6 +120,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final trimmed = url.trim();
     await _prefs.setString(_kOllamaUrl, trimmed);
     state = state.copyWith(ollamaBaseUrl: trimmed);
+  }
+
+  Future<void> setChatHistorySaveMode(ChatHistorySaveMode mode) async {
+    await _prefs.setString(_kChatHistorySaveMode, mode.name);
+    state = state.copyWith(chatHistorySaveMode: mode);
   }
 }
 

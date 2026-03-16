@@ -359,17 +359,17 @@ Organizing conversations into folder-backed workspaces for focused work.
 **Priority:** Should · **Points:** 5
 
 **Acceptance Criteria:**
-- **Given** I create a project, **When** I set a name and optional description, **Then** the app creates a project folder that can hold history files and an `AGENT.md` configuration.
+- **Given** I create a project, **When** I set a name and optional description, **Then** the app creates a project folder that can hold history files and a `persona.md` configuration.
 - **Given** I assign conversations to a project, **When** I open it, **Then** I see all its conversations sorted by recency; conversations also remain accessible from the global list.
 - **Given** I delete a project, **When** I confirm, **Then** the project is removed but its conversations are preserved in the global list (not deleted).
 
-### US-PROJ-02: Configure Projects via `AGENT.md`
-**As** Maya (AI Developer), **I want to** define project defaults in `AGENT.md`, **so that** new conversations inherit the right context wherever the project folder is opened.  
+### US-PROJ-02: Configure Projects via `persona.md`
+**As** Maya (AI Developer), **I want to** define project defaults in `persona.md`, **so that** new conversations inherit the right context wherever the project folder is opened.  
 **Priority:** Should · **Points:** 3
 
 **Acceptance Criteria:**
-- **Given** a project folder contains `AGENT.md`, **When** I open the project, **Then** the app reads project name, default model, system prompt, and other supported defaults from that file.
-- **Given** I change project defaults in the app, **When** I save, **Then** the corresponding `AGENT.md` file updates without touching unrelated history files.
+- **Given** a project folder contains `persona.md`, **When** I open the project, **Then** the app reads project name, default model, system prompt, and other supported defaults from that file.
+- **Given** I change project defaults in the app, **When** I save, **Then** the corresponding `persona.md` file updates without touching unrelated history files.
 - **Given** I override a project default in a conversation, **When** I view project settings, **Then** the project defaults remain unchanged; overrides are per-conversation only.
 
 ### US-PROJ-03: Treat Agent Chats Like Project Chats
@@ -377,7 +377,7 @@ Organizing conversations into folder-backed workspaces for focused work.
 **Priority:** Should · **Points:** 3
 
 **Acceptance Criteria:**
-- **Given** I open a folder-backed agent or project workspace, **When** it contains `AGENT.md` and history files, **Then** the app indexes and renders its chats using the same parser and UI.
+- **Given** I open a folder-backed agent or project workspace, **When** it contains `persona.md` and history files, **Then** the app indexes and renders its chats using the same parser and UI.
 - **Given** agent chat histories are synced from another device, **When** I restore them, **Then** they remain searchable, exportable, and archivable like project chats.
 - **Given** I move or copy a workspace folder, **When** I reopen it elsewhere, **Then** configuration and chat history stay together.
 

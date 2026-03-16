@@ -20,6 +20,8 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
+enum _LeaveConversationAction { save, discard, cancel }
+
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
@@ -40,6 +42,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               );
       if (mounted) {
         ref.read(activeConversationIdProvider.notifier).state = conv.id;
+        ref.invalidate(savedHistoryExistsProvider(conv.id));
       }
       activeId = conv.id;
     }
@@ -58,15 +61,149 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _createConversation() async {
-    final settings = ref.read(settingsProvider);
-    final conv = await ref.read(conversationsProvider.notifier).createConversation(
-          title: 'New Chat',
-          modelId: settings.defaultModelId,
-        );
-    if (mounted) {
-      ref.read(activeConversationIdProvider.notifier).state = conv.id;
+  Future<bool> _handleNewChatRequested() async {
+    final shouldContinue = await _confirmConversationLeave();
+    if (!shouldContinue) {
+      return false;
     }
+
+    final settings = ref.read(settingsProvider);
+    final conv =
+        await ref.read(conversationsProvider.notifier).createConversation(
+              title: 'New Chat',
+              modelId: settings.defaultModelId,
+            );
+    if (!mounted) {
+      return false;
+    }
+
+    ref.read(activeConversationIdProvider.notifier).state = conv.id;
+    ref.invalidate(savedHistoryExistsProvider(conv.id));
+    return true;
+  }
+
+  Future<bool> _handleConversationSelected(String conversationId) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == conversationId) {
+      return true;
+    }
+
+    final shouldContinue = await _confirmConversationLeave();
+    if (!shouldContinue || !mounted) {
+      return false;
+    }
+
+    ref.read(activeConversationIdProvider.notifier).state = conversationId;
+    return true;
+  }
+
+  Future<void> _saveCurrentConversationSnapshot({
+    bool showFeedback = true,
+  }) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) {
+      if (showFeedback && mounted) {
+        _showSnackBar('Start a conversation before saving history.');
+      }
+      return;
+    }
+
+    final snapshot = await ref
+        .read(conversationServiceProvider)
+        .saveConversationSnapshot(activeId);
+    ref.invalidate(savedHistoryExistsProvider(activeId));
+
+    if (!mounted || !showFeedback) {
+      return;
+    }
+
+    if (snapshot == null) {
+      _showSnackBar('Unable to save chat history.');
+      return;
+    }
+
+    _showSnackBar('Chat history saved.');
+  }
+
+  Future<bool> _confirmConversationLeave() async {
+    final chatState = ref.read(chatProvider);
+    if (chatState.status == ChatStatus.streaming ||
+        chatState.status == ChatStatus.sending) {
+      if (mounted) {
+        _showSnackBar('Finish or stop the current response before leaving.');
+      }
+      return false;
+    }
+
+    final settings = ref.read(settingsProvider);
+    if (settings.chatHistorySaveMode != ChatHistorySaveMode.askBeforeSaving) {
+      return true;
+    }
+
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) {
+      return true;
+    }
+
+    final conversationService = ref.read(conversationServiceProvider);
+    final messages = await conversationService.getMessages(activeId);
+    if (messages.isEmpty) {
+      return true;
+    }
+
+    final hasSavedHistory = await conversationService.hasSavedHistory(activeId);
+    if (!mounted) {
+      return false;
+    }
+
+    final action = await showDialog<_LeaveConversationAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save chat before leaving?'),
+        content: Text(
+          hasSavedHistory
+              ? 'This chat already has a saved history file. Save again to update it before leaving?'
+              : 'This chat is still temporary. Save it as a plain-text history file before leaving?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _LeaveConversationAction.cancel,
+            ),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _LeaveConversationAction.discard,
+            ),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _LeaveConversationAction.save,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    switch (action) {
+      case _LeaveConversationAction.save:
+        await _saveCurrentConversationSnapshot(showFeedback: false);
+        return true;
+      case _LeaveConversationAction.discard:
+        return true;
+      case _LeaveConversationAction.cancel:
+      case null:
+        return false;
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -76,6 +213,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messages =
         activeId != null ? ref.watch(messagesProvider(activeId)) : <Message>[];
     final showDesktopLayout = isWideLayout(MediaQuery.sizeOf(context).width);
+    final settings = ref.watch(settingsProvider);
+    final hasSavedHistory = activeId == null
+        ? const AsyncValue<bool>.data(false)
+        : ref.watch(savedHistoryExistsProvider(activeId));
 
     if (chatState.status == ChatStatus.streaming) {
       _scrollToBottom();
@@ -88,20 +229,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onTap: () => _showModelPicker(context),
         ),
         actions: [
+          if (settings.chatHistorySaveMode != ChatHistorySaveMode.automatic)
+            IconButton(
+              icon: Icon(
+                hasSavedHistory.valueOrNull == true
+                    ? Icons.save_as_rounded
+                    : Icons.save_outlined,
+              ),
+              tooltip: hasSavedHistory.valueOrNull == true
+                  ? 'Save history again'
+                  : 'Save history',
+              onPressed: activeId == null
+                  ? null
+                  : () => _saveCurrentConversationSnapshot(),
+            ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'New Chat',
-            onPressed: _createConversation,
+            onPressed: _handleNewChatRequested,
           ),
         ],
       ),
-      drawer: showDesktopLayout ? null : const ConversationDrawer(),
+      drawer: showDesktopLayout
+          ? null
+          : ConversationDrawer(
+              onNewChatRequested: _handleNewChatRequested,
+              onConversationSelected: _handleConversationSelected,
+            ),
       body: Row(
         children: [
           if (showDesktopLayout) ...[
-            const SizedBox(
+            SizedBox(
               width: 320,
-              child: ConversationDrawer(embedded: true),
+              child: ConversationDrawer(
+                embedded: true,
+                onNewChatRequested: _handleNewChatRequested,
+                onConversationSelected: _handleConversationSelected,
+              ),
             ),
             VerticalDivider(
               width: 1,
@@ -114,7 +278,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               chatState: chatState,
               messages: messages,
               scrollController: _scrollController,
-              showMarkdown: ref.watch(settingsProvider).markdownEnabled,
+              showMarkdown: settings.markdownEnabled,
               onSendSample: (text) async {
                 final convId = await _ensureConversation();
                 if (mounted) {
@@ -127,7 +291,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ref.read(chatProvider.notifier).sendMessage(text, convId);
                 }
               },
-              onDismissError: () => ref.read(chatProvider.notifier).clearError(),
+              onDismissError: () =>
+                  ref.read(chatProvider.notifier).clearError(),
               onStop: () => ref.read(chatProvider.notifier).stopGeneration(),
             ),
           ),
@@ -182,7 +347,8 @@ class _ChatPane extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (chatState.status == ChatStatus.error && chatState.errorMessage != null)
+        if (chatState.status == ChatStatus.error &&
+            chatState.errorMessage != null)
           MaterialBanner(
             content: Text(chatState.errorMessage!),
             leading: const Icon(Icons.error_outline),
@@ -382,9 +548,10 @@ class _ModelPickerContent extends ConsumerWidget {
                           visualDensity: VisualDensity.compact,
                           leading: const Icon(Icons.memory_outlined),
                           title: Text(model.displayName),
-                          trailing: model.qualifiedId == chatState.selectedModelId
-                              ? const Icon(Icons.check_circle_rounded)
-                              : null,
+                          trailing:
+                              model.qualifiedId == chatState.selectedModelId
+                                  ? const Icon(Icons.check_circle_rounded)
+                                  : null,
                           onTap: () {
                             ref
                                 .read(chatProvider.notifier)

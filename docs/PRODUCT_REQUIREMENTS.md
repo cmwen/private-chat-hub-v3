@@ -330,7 +330,7 @@ Saved chat history is stored as portable plain-text files. SQLite is used only a
 - Saved chat history is stored as files, not as the authoritative database record
 - The history format includes a session header, `Started:` line, per-message headings in the form `## [timestamp] sender`, and `---` separators between messages
 - Markdown, code fences, and relative image references are preserved exactly when saving and reopening
-- No sidecar metadata file is required beyond project `AGENT.md` and any referenced attachments/images
+- No sidecar metadata file is required beyond project `persona.md` and any referenced attachments/images
 
 #### CONV-009: History Import, Parse & Restore (Must Have)
 **Description:** The app can read, parse, and restore saved history files or synced project folders on another device.
@@ -471,12 +471,12 @@ Saved chat history is stored as portable plain-text files. SQLite is used only a
 - The conversation list can be filtered by project
 - A default "General" project exists for unorganized conversations
 
-#### PROJ-002: Project Configuration via `AGENT.md` (Should Have)
-**Description:** Each project folder can use `AGENT.md` to define local chat defaults and agent-like behavior.
+#### PROJ-002: Project Configuration via `persona.md` (Should Have)
+**Description:** Each project folder can use `persona.md` to define local chat defaults and agent-like behavior.
 
 **Acceptance Criteria:**
-- User can create or import a project folder containing `AGENT.md`
-- `AGENT.md` can define project name, default system prompt, preferred model, and other local chat defaults
+- User can create or import a project folder containing `persona.md`
+- `persona.md` can define project name, default system prompt, preferred model, and other local chat defaults
 - Agent chats and project chats use the same history file format and parser
 - Moving or syncing a project folder preserves its configuration and chat history together
 
@@ -621,7 +621,7 @@ Saved chat history is stored as portable plain-text files. SQLite is used only a
 **Requirements:**
 - No saved conversation data is lost on app crash or force-stop
 - History file writes use atomic or append-safe operations
-- SQLite cache/index can be rebuilt from saved history files and `AGENT.md` project configuration
+- SQLite cache/index can be rebuilt from saved history files and `persona.md` project configuration
 - Corrupted data is detected and handled without crashing
 
 **Acceptance Criteria:**

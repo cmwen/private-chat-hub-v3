@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:private_chat_hub/models/message.dart';
+import 'package:private_chat_hub/services/chat_history_file_service.dart';
 import 'package:private_chat_hub/services/conversation_service.dart';
 import 'package:private_chat_hub/services/database_service.dart';
-import 'package:private_chat_hub/models/message.dart';
 
 DatabaseService _buildInMemoryDb() => DatabaseService(
       databaseFactoryOverride: databaseFactoryFfi,
@@ -18,14 +21,25 @@ void main() {
 
   late ConversationService service;
   late DatabaseService dbService;
+  late Directory tempDir;
 
-  setUp(() {
+  setUp(() async {
+    tempDir =
+        await Directory.systemTemp.createTemp('conversation-service-test');
     dbService = _buildInMemoryDb();
-    service = ConversationService(dbService);
+    service = ConversationService(
+      dbService,
+      historyFileService: ChatHistoryFileService(
+        baseDirectoryOverride: tempDir.path,
+      ),
+    );
   });
 
   tearDown(() async {
     await dbService.close();
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+    }
   });
 
   group('ConversationService', () {
@@ -143,6 +157,44 @@ void main() {
       final messages = await service.getMessages(conv.id);
       expect(messages[0].content, 'First');
       expect(messages[1].content, 'Second');
+    });
+
+    test('saveConversationSnapshot writes and reloads history file', () async {
+      final conv = await service.createConversation(
+        title: 'Saved Chat',
+        modelId: 'mock:default',
+      );
+      final message = Message.create(
+        conversationId: conv.id,
+        role: MessageRole.user,
+        content: 'Remember me',
+      );
+      await service.addMessage(message);
+
+      final snapshot = await service.saveConversationSnapshot(conv.id);
+      final savedHistoryExists = await service.hasSavedHistory(conv.id);
+      final loadedSnapshot =
+          await service.loadSavedConversationSnapshot(conv.id);
+
+      expect(snapshot, isNotNull);
+      expect(savedHistoryExists, isTrue);
+      expect(loadedSnapshot, isNotNull);
+      expect(loadedSnapshot!.conversation.title, 'Saved Chat');
+      expect(loadedSnapshot.messages.single.content, 'Remember me');
+    });
+
+    test('deleteConversation removes saved history file', () async {
+      final conv = await service.createConversation();
+      await service.addMessage(Message.create(
+        conversationId: conv.id,
+        role: MessageRole.user,
+        content: 'hello',
+      ));
+      await service.saveConversationSnapshot(conv.id);
+
+      expect(await service.hasSavedHistory(conv.id), isTrue);
+      await service.deleteConversation(conv.id);
+      expect(await service.hasSavedHistory(conv.id), isFalse);
     });
   });
 }

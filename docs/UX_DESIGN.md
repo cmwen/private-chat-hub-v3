@@ -254,7 +254,7 @@ Parameter presets (Creative/Balanced/Precise). Advanced toggle reveals raw slide
 
 ### 3.5 Projects
 
-Group related conversations in folder-backed projects. Project list: name, color, count. "All Conversations" always at top. Assign via drawer long-press → "Move to Project." Each project folder may contain `AGENT.md` to define local defaults for new chats.
+Group related conversations in folder-backed projects. Project list: name, color, count. "All Conversations" always at top. Assign via drawer long-press → "Move to Project." Each project folder may contain `persona.md` to define local defaults for new chats.
 
 ---
 

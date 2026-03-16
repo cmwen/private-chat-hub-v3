@@ -163,7 +163,7 @@ Provider-agnostic tool framework: abstract `Tool` interface → `ToolCallingServ
 |---------|-------------|
 | Model comparison | Side-by-side responses from 2+ models on the same prompt |
 | Text-to-speech | Read AI responses aloud using platform TTS where available; play/pause, speed control, voice selection |
-| Projects | Group conversations by project/topic folders; support `AGENT.md` for project-level defaults |
+| Projects | Group conversations by project/topic folders; support `persona.md` for project-level defaults |
 | Export & sharing | Export conversations as native history/Markdown/PDF; share or open via platform-native flows |
 | Chat history controls | Let users choose when chats are saved and move portable history between devices |
 | Advanced search | Full-text search across all conversations; filter by model, date, provider, project |

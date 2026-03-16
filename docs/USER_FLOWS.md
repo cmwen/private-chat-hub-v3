@@ -349,7 +349,7 @@ Group conversations by topic or purpose in folder-backed projects.
 **Key decisions:**
 - "All Conversations" is always the default view — projects are optional filters.
 - A conversation belongs to at most one project at a time.
-- Projects are lightweight: name + color, backed by a folder that may include `AGENT.md`.
+- Projects are lightweight: name + color, backed by a folder that may include `persona.md`.
 
 ---
 

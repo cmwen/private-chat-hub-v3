@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/message.dart';
@@ -12,7 +14,6 @@ import 'settings_provider.dart';
 final ollamaProviderInstance = Provider<OllamaProvider>((ref) {
   final url = ref.watch(settingsProvider.select((s) => s.ollamaBaseUrl));
   final provider = OllamaProvider(baseUrl: url);
-  // Initialize health-check asynchronously; status updates via checkHealth.
   Future.microtask(provider.initialize);
   return provider;
 });
@@ -63,14 +64,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final ConversationService _conversationService;
   final Ref _ref;
 
-  /// Set to true when the user taps "Stop" during streaming.
   bool _cancelled = false;
-
-  /// Holds a reference to the in-flight assistant message so
-  /// [stopGeneration] can finalise it with the accumulated text.
   Message? _pendingAssistantMsg;
-
-  /// Token usage captured from the last [onUsage] callback.
   TokenUsage? _pendingTokenUsage;
 
   ChatNotifier(this._chatService, this._conversationService, this._ref)
@@ -80,23 +75,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(selectedModelId: modelId);
   }
 
-  /// Cancels the current streaming response, saves whatever has been
-  /// accumulated so far as the final message content, and returns to idle.
   void stopGeneration() {
     if (state.status != ChatStatus.streaming) return;
     _cancelled = true;
+    final stoppedText = state.streamingText;
 
     final msg = _pendingAssistantMsg;
     if (msg != null) {
-      final accumulated = state.streamingText;
-      final completedMsg = msg.copyWith(
-        content: accumulated.isEmpty ? '(stopped)' : accumulated,
-        status: MessageStatus.sent,
-      );
-      // Fire-and-forget: persist the partial message to the DB.
-      _ref
-          .read(messagesProvider(msg.conversationId).notifier)
-          .updateMessage(completedMsg);
+      unawaited(_finalizeStoppedMessage(msg, stoppedText));
     }
 
     state = state.copyWith(status: ChatStatus.idle, streamingText: '');
@@ -109,7 +95,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
-    // Reset per-request state.
     _cancelled = false;
     _pendingTokenUsage = null;
     _pendingAssistantMsg = null;
@@ -125,7 +110,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _ref.read(messagesProvider(conversationId).notifier);
     await messagesNotifier.addMessage(userMsg);
 
-    // Auto-title: rename "New Chat" conversations using the first 40 chars.
     final conv = await _conversationService.getConversation(conversationId);
     if (conv != null && conv.title == 'New Chat') {
       final trimmed = text.trim();
@@ -158,7 +142,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         userText: text,
         temperature: settings.temperature,
         onChunk: (chunk) {
-          if (_cancelled) return; // Stop appending when cancelled.
+          if (_cancelled) return;
           state = state.copyWith(
             streamingText: state.streamingText + chunk,
           );
@@ -171,7 +155,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
         },
       );
 
-      // Only update state if the user hasn't already cancelled.
       if (_cancelled) return;
 
       final completedMsg = assistantMsg.copyWith(
@@ -180,21 +163,52 @@ class ChatNotifier extends StateNotifier<ChatState> {
         tokenUsage: _pendingTokenUsage,
       );
       await messagesNotifier.updateMessage(completedMsg);
+      await _maybeAutoSaveConversation(conversationId);
 
       state = state.copyWith(status: ChatStatus.idle, streamingText: '');
+      _pendingAssistantMsg = null;
     } on ChatServiceException catch (e) {
-      if (_cancelled) return; // stopGeneration already handled the state.
+      if (_cancelled) return;
       final failedMsg = assistantMsg.copyWith(
         content: 'Error: ${e.message}',
         status: MessageStatus.failed,
+        tokenUsage: _pendingTokenUsage,
       );
       await messagesNotifier.updateMessage(failedMsg);
+      await _maybeAutoSaveConversation(conversationId);
       state = state.copyWith(
         status: ChatStatus.error,
         errorMessage: e.message,
         streamingText: '',
       );
+      _pendingAssistantMsg = null;
     }
+  }
+
+  Future<void> _finalizeStoppedMessage(
+    Message message,
+    String stoppedText,
+  ) async {
+    final completedMsg = message.copyWith(
+      content: stoppedText.isEmpty ? '(stopped)' : stoppedText,
+      status: MessageStatus.sent,
+      tokenUsage: _pendingTokenUsage,
+    );
+    await _ref
+        .read(messagesProvider(message.conversationId).notifier)
+        .updateMessage(completedMsg);
+    await _maybeAutoSaveConversation(message.conversationId);
+    _pendingAssistantMsg = null;
+  }
+
+  Future<void> _maybeAutoSaveConversation(String conversationId) async {
+    final saveMode = _ref.read(settingsProvider).chatHistorySaveMode;
+    if (saveMode != ChatHistorySaveMode.automatic) {
+      return;
+    }
+
+    await _conversationService.saveConversationSnapshot(conversationId);
+    _ref.invalidate(savedHistoryExistsProvider(conversationId));
   }
 
   void clearError() {

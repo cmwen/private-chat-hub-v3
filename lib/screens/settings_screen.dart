@@ -61,6 +61,18 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              _SectionHeader(title: 'Chat History'),
+              ListTile(
+                leading: const Icon(Icons.save_outlined),
+                title: const Text('When to save chat history'),
+                subtitle: Text(
+                  '${settings.chatHistorySaveMode.label}\n'
+                  'Saved chats are stored as plain-text files on this device.',
+                ),
+                isThreeLine: true,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showChatHistorySaveModeDialog(context, ref),
+              ),
               _SectionHeader(title: 'Providers'),
               _OllamaSettingsTile(ollamaBaseUrl: settings.ollamaBaseUrl),
               ListTile(
@@ -95,6 +107,53 @@ class SettingsScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<void> _showChatHistorySaveModeDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final currentMode = ref.read(settingsProvider).chatHistorySaveMode;
+    final selectedMode = await showDialog<ChatHistorySaveMode>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('When to save chat history'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final mode in ChatHistorySaveMode.values)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    mode == currentMode
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                  ),
+                  title: Text(mode.label),
+                  subtitle: Text(mode.description),
+                  onTap: () => Navigator.of(dialogContext).pop(mode),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedMode == null || selectedMode == currentMode) {
+      return;
+    }
+
+    await ref
+        .read(settingsProvider.notifier)
+        .setChatHistorySaveMode(selectedMode);
   }
 }
 

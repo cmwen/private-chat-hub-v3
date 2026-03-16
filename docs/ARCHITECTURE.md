@@ -74,7 +74,7 @@ performance optimizations.
    recoverable temporary state, but it is never the authoritative history store.
 
 4. **Portable workspace model.** Chats live inside folder-backed projects. Each
-   project folder may contain `AGENT.md` as its local configuration, and the same
+   project folder may contain `persona.md` as its local configuration, and the same
    folder can be restored on another device without translation.
 
 5. **Capability-driven UI.** The interface adapts to what the selected model can do
@@ -247,7 +247,7 @@ and aggregate metadata (model used, token totals, timestamps).
 **Responsibilities:**
 - Create and update plain-text history files for saved chats
 - Parse history files into the canonical conversation/message model
-- Discover project folders and read local defaults from `AGENT.md`
+- Discover project folders and read local defaults from `persona.md`
 - Maintain SQLite-backed search/index projections derived from files
 - Import and reindex synced history folders restored from another device
 - Support save modes for automatic, prompted, or manual history creation
@@ -376,15 +376,15 @@ SQLite. Durable storage on disk follows a portable workspace layout:
 
 ```text
 <project-folder>/
-├── AGENT.md
+├── persona.md
 ├── history/
 │   └── YYYY-MM-DD-<short-title>.md
 └── images/                  # optional, only when referenced by history
 ```
 
-- `AGENT.md` stores project-local defaults and agent-like configuration.
+- `persona.md` stores project-local defaults and agent-like configuration.
 - `history/` contains the saved chat transcripts.
-- No sidecar metadata files are required beyond `AGENT.md` and any referenced
+- No sidecar metadata files are required beyond `persona.md` and any referenced
   assets.
 
 ### History File Format
@@ -538,4 +538,4 @@ tracks its own token usage and timing metrics.
 | 8 | Streaming protocol | SSE / chunked HTTP depending on backend | Provider implementations normalise to a common `Stream<ChatResponse>` |
 | 9 | Connection model | Multi-server profiles per provider kind | Supports users with multiple Ollama/LM Studio boxes |
 | 10 | Cost tracking | Per-message recording with period-based limits | Gives users fine-grained visibility and automatic safety nets |
-| 11 | Project configuration | `AGENT.md` per project folder | Keeps project defaults portable with the history files |
+| 11 | Project configuration | `persona.md` per project folder | Keeps project defaults portable with the history files |

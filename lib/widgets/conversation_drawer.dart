@@ -7,8 +7,15 @@ import '../utils/date_utils.dart' as date_utils;
 
 class ConversationDrawer extends ConsumerWidget {
   final bool embedded;
+  final Future<bool> Function() onNewChatRequested;
+  final Future<bool> Function(String conversationId) onConversationSelected;
 
-  const ConversationDrawer({super.key, this.embedded = false});
+  const ConversationDrawer({
+    super.key,
+    required this.onNewChatRequested,
+    required this.onConversationSelected,
+    this.embedded = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,11 +53,8 @@ class ConversationDrawer extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: FilledButton.icon(
               onPressed: () async {
-                final conv = await ref
-                    .read(conversationsProvider.notifier)
-                    .createConversation();
-                if (!context.mounted) return;
-                ref.read(activeConversationIdProvider.notifier).state = conv.id;
+                final created = await onNewChatRequested();
+                if (!context.mounted || !created) return;
                 if (!embedded) {
                   Navigator.of(context).pop();
                 }
@@ -89,6 +93,7 @@ class ConversationDrawer extends ConsumerWidget {
                       conversations: conversations,
                       activeId: activeId,
                       closeOnSelect: !embedded,
+                      onConversationSelected: onConversationSelected,
                     ),
                   ),
           ),
@@ -118,19 +123,21 @@ class ConversationDrawer extends ConsumerWidget {
   }
 }
 
-class _GroupedConversationList extends ConsumerWidget {
+class _GroupedConversationList extends StatelessWidget {
   final List<Conversation> conversations;
   final String? activeId;
   final bool closeOnSelect;
+  final Future<bool> Function(String conversationId) onConversationSelected;
 
   const _GroupedConversationList({
     required this.conversations,
     required this.activeId,
     required this.closeOnSelect,
+    required this.onConversationSelected,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final grouped = date_utils.ConversationDateUtils.groupByDate(
       conversations,
       (c) => c.updatedAt,
@@ -146,6 +153,7 @@ class _GroupedConversationList extends ConsumerWidget {
               conversation: conv,
               isActive: conv.id == activeId,
               closeOnSelect: closeOnSelect,
+              onConversationSelected: onConversationSelected,
             ),
         ],
       ],
@@ -178,11 +186,13 @@ class _ConversationTile extends ConsumerWidget {
   final Conversation conversation;
   final bool isActive;
   final bool closeOnSelect;
+  final Future<bool> Function(String conversationId) onConversationSelected;
 
   const _ConversationTile({
     required this.conversation,
     required this.isActive,
     required this.closeOnSelect,
+    required this.onConversationSelected,
   });
 
   @override
@@ -208,7 +218,7 @@ class _ConversationTile extends ConsumerWidget {
       ),
       trailing: PopupMenuButton<_ConversationAction>(
         tooltip: 'Conversation actions',
-        onSelected: (action) => _handleAction(context, ref, action),
+        onSelected: (action) async => _handleAction(context, ref, action),
         itemBuilder: (context) => [
           const PopupMenuItem(
             value: _ConversationAction.rename,
@@ -234,8 +244,9 @@ class _ConversationTile extends ConsumerWidget {
           ),
         ],
       ),
-      onTap: () {
-        ref.read(activeConversationIdProvider.notifier).state = conversation.id;
+      onTap: () async {
+        final switched = await onConversationSelected(conversation.id);
+        if (!context.mounted || !switched) return;
         if (closeOnSelect) {
           Navigator.of(context).pop();
         }
@@ -243,24 +254,27 @@ class _ConversationTile extends ConsumerWidget {
     );
   }
 
-  void _handleAction(
+  Future<void> _handleAction(
     BuildContext context,
     WidgetRef ref,
     _ConversationAction action,
-  ) {
+  ) async {
     switch (action) {
       case _ConversationAction.rename:
         _showRenameDialog(context, ref);
         return;
       case _ConversationAction.archive:
-        ref
+        await ref
             .read(conversationsProvider.notifier)
             .archiveConversation(conversation.id);
         return;
       case _ConversationAction.delete:
-        ref
+        await ref
             .read(conversationsProvider.notifier)
             .deleteConversation(conversation.id);
+        if (ref.read(activeConversationIdProvider) == conversation.id) {
+          ref.read(activeConversationIdProvider.notifier).state = null;
+        }
         return;
     }
   }
@@ -285,7 +299,9 @@ class _ConversationTile extends ConsumerWidget {
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
                 ref.read(conversationsProvider.notifier).renameConversation(
-                    conversation.id, controller.text.trim());
+                      conversation.id,
+                      controller.text.trim(),
+                    );
               }
               Navigator.of(ctx).pop();
             },

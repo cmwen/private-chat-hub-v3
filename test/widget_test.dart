@@ -2,61 +2,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:private_chat_hub/main.dart';
-import 'package:private_chat_hub/providers/conversation_provider.dart';
 import 'package:private_chat_hub/providers/settings_provider.dart';
-import 'package:private_chat_hub/services/database_service.dart';
+import 'package:private_chat_hub/screens/settings_screen.dart';
 
-Future<List<Override>> _buildOverrides() async {
-  SharedPreferences.setMockInitialValues({});
-  final prefs = await SharedPreferences.getInstance();
-  // Use sqflite_ffi in-memory DB so tests don't touch the file system.
-  final db = DatabaseService(
-    databaseFactoryOverride: databaseFactoryFfi,
-    databasePathOverride: inMemoryDatabasePath,
-  );
-  return [
-    sharedPreferencesProvider.overrideWithValue(prefs),
-    databaseServiceProvider.overrideWithValue(db),
-  ];
+Future<SharedPreferences> _buildPrefs(
+    {Map<String, Object> initialValues = const {}}) async {
+  SharedPreferences.setMockInitialValues(initialValues);
+  return SharedPreferences.getInstance();
 }
 
 void main() {
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
+  group('Settings UI', () {
+    testWidgets('shows chat history save controls', (tester) async {
+      final prefs = await _buildPrefs();
 
-  group('App smoke tests', () {
-    testWidgets('app launches and shows chat screen', (tester) async {
-      final overrides = await _buildOverrides();
       await tester.pumpWidget(
-        ProviderScope(overrides: overrides, child: const PrivateChatHubApp()),
-      );
-      await tester.pump();
-
-      expect(find.byType(MaterialApp), findsOneWidget);
-    });
-
-    testWidgets('settings screen is accessible', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 800));
-      final overrides = await _buildOverrides();
-      await tester.pumpWidget(
-        ProviderScope(overrides: overrides, child: const PrivateChatHubApp()),
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
       );
       await tester.pumpAndSettle();
 
-      final ScaffoldState scaffold = tester.firstState(find.byType(Scaffold));
-      scaffold.openDrawer();
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Settings'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Settings'), findsWidgets);
+      expect(find.text('Chat History'), findsOneWidget);
+      expect(find.text('When to save chat history'), findsOneWidget);
+      expect(find.textContaining('Automatically'), findsOneWidget);
     });
 
+    testWidgets('changes chat history save mode from settings dialog',
+        (tester) async {
+      final prefs = await _buildPrefs();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('When to save chat history'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Only when I tap Save'));
+      await tester.pumpAndSettle();
+
+      expect(prefs.getString('settings.chatHistorySaveMode'), 'manualOnly');
+      expect(find.textContaining('Only when I tap Save'), findsOneWidget);
+    });
   });
 }

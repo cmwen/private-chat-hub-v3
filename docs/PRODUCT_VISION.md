@@ -164,7 +164,7 @@ The architecture is built on three provider tiers. Every feature must work acros
 - Projects / Spaces as folder-backed workspaces
 - Portable plain-text chat history with restore on another device
 - Data export (JSON, Markdown, plain text)
-- `AGENT.md` configuration per project folder
+- `persona.md` configuration per project folder
 - Platform share/import integration (send to and receive from other apps)
 - Text-to-speech for AI responses
 - Conversation templates and custom agents
