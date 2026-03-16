@@ -14,8 +14,7 @@ val releaseSigningAvailable =
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // AGP 9+ provides built-in Kotlin support, so only the Android plugin is applied here.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
