@@ -232,11 +232,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (settings.chatHistorySaveMode != ChatHistorySaveMode.automatic)
             IconButton(
               icon: Icon(
-                hasSavedHistory.valueOrNull == true
+                hasSavedHistory.value == true
                     ? Icons.save_as_rounded
                     : Icons.save_outlined,
               ),
-              tooltip: hasSavedHistory.valueOrNull == true
+              tooltip: hasSavedHistory.value == true
                   ? 'Save history again'
                   : 'Save history',
               onPressed: activeId == null
