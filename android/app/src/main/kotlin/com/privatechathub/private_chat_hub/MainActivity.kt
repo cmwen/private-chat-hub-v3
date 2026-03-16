@@ -1,4 +1,4 @@
-package com.cmwen.private_chat_hub
+package com.privatechathub.private_chat_hub
 
 import io.flutter.embedding.android.FlutterActivity
 

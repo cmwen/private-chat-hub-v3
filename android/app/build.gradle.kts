@@ -19,7 +19,7 @@ plugins {
 }
 
 android {
-    namespace = "com.cmwen.private_chat_hub"
+    namespace = "com.privatechathub.private_chat_hub"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -30,7 +30,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cmwen.private_chat_hub"
+        applicationId = "com.privatechathub.private_chat_hub"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

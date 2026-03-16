@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:private_chat_hub/models/conversation.dart';
 import 'package:private_chat_hub/models/message.dart';
 import 'package:private_chat_hub/services/chat_history_file_service.dart';
 import 'package:private_chat_hub/services/conversation_service.dart';
@@ -22,16 +23,18 @@ void main() {
   late ConversationService service;
   late DatabaseService dbService;
   late Directory tempDir;
+  late ChatHistoryFileService historyService;
 
   setUp(() async {
     tempDir =
         await Directory.systemTemp.createTemp('conversation-service-test');
     dbService = _buildInMemoryDb();
+    historyService = ChatHistoryFileService(
+      baseDirectoryOverride: tempDir.path,
+    );
     service = ConversationService(
       dbService,
-      historyFileService: ChatHistoryFileService(
-        baseDirectoryOverride: tempDir.path,
-      ),
+      historyFileService: historyService,
     );
   });
 
@@ -181,6 +184,78 @@ void main() {
       expect(loadedSnapshot, isNotNull);
       expect(loadedSnapshot!.conversation.title, 'Saved Chat');
       expect(loadedSnapshot.messages.single.content, 'Remember me');
+    });
+
+    test(
+        'syncMarkdownHistoryIndex imports updates and removes markdown history',
+        () async {
+      final externalConversation = Conversation(
+        id: 'external-conversation',
+        title: 'Imported chat',
+        modelId: 'mock:default',
+        systemPrompt: 'Imported system prompt',
+        createdAt: DateTime.parse('2025-02-01T10:00:00Z'),
+        updatedAt: DateTime.parse('2025-02-01T10:05:00Z'),
+      );
+      final externalMessages = [
+        Message(
+          id: 'external-user',
+          conversationId: externalConversation.id,
+          role: MessageRole.user,
+          content: 'Imported question',
+          timestamp: DateTime.parse('2025-02-01T10:01:00Z'),
+        ),
+      ];
+
+      await historyService.saveSnapshot(
+        conversation: externalConversation,
+        messages: externalMessages,
+      );
+      await service.syncMarkdownHistoryIndex(force: true);
+
+      var conversations = await service.getConversations();
+      expect(conversations.map((item) => item.id),
+          contains(externalConversation.id));
+      expect(
+        (await service.getConversation(externalConversation.id))?.systemPrompt,
+        'Imported system prompt',
+      );
+
+      final updatedConversation = externalConversation.copyWith(
+        title: 'Imported chat updated',
+        updatedAt: DateTime.parse('2025-02-01T10:06:00Z'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await historyService.saveSnapshot(
+        conversation: updatedConversation,
+        messages: [
+          ...externalMessages,
+          Message(
+            id: 'external-assistant',
+            conversationId: externalConversation.id,
+            role: MessageRole.assistant,
+            content: 'Imported answer',
+            timestamp: DateTime.parse('2025-02-01T10:02:00Z'),
+          ),
+        ],
+      );
+      await service.syncMarkdownHistoryIndex(force: true);
+
+      expect(
+        (await service.getConversation(externalConversation.id))?.title,
+        'Imported chat updated',
+      );
+      expect(
+        (await service.getMessages(externalConversation.id)).length,
+        2,
+      );
+
+      await service.deleteSavedHistory(externalConversation.id);
+      conversations = await service.getConversations();
+      expect(
+        conversations.map((item) => item.id),
+        isNot(contains(externalConversation.id)),
+      );
     });
 
     test('deleteConversation removes saved history file', () async {

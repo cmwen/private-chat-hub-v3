@@ -38,6 +38,7 @@ class AppSettings {
   final String ollamaBaseUrl;
   final String lmStudioBaseUrl;
   final ChatHistorySaveMode chatHistorySaveMode;
+  final String markdownHistoryDirectory;
 
   const AppSettings({
     this.streamingEnabled = true,
@@ -47,6 +48,7 @@ class AppSettings {
     this.ollamaBaseUrl = '',
     this.lmStudioBaseUrl = LmStudioProvider.defaultBaseUrl,
     this.chatHistorySaveMode = ChatHistorySaveMode.automatic,
+    this.markdownHistoryDirectory = '',
   });
 
   AppSettings copyWith({
@@ -57,6 +59,7 @@ class AppSettings {
     String? ollamaBaseUrl,
     String? lmStudioBaseUrl,
     ChatHistorySaveMode? chatHistorySaveMode,
+    String? markdownHistoryDirectory,
   }) {
     return AppSettings(
       streamingEnabled: streamingEnabled ?? this.streamingEnabled,
@@ -66,6 +69,8 @@ class AppSettings {
       ollamaBaseUrl: ollamaBaseUrl ?? this.ollamaBaseUrl,
       lmStudioBaseUrl: lmStudioBaseUrl ?? this.lmStudioBaseUrl,
       chatHistorySaveMode: chatHistorySaveMode ?? this.chatHistorySaveMode,
+      markdownHistoryDirectory:
+          markdownHistoryDirectory ?? this.markdownHistoryDirectory,
     );
   }
 }
@@ -80,6 +85,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOllamaUrl = 'settings.ollamaBaseUrl';
   static const _kLmStudioUrl = 'settings.lmStudioBaseUrl';
   static const _kChatHistorySaveMode = 'settings.chatHistorySaveMode';
+  static const _kMarkdownHistoryDirectory = 'settings.markdownHistoryDirectory';
 
   SettingsNotifier(this._prefs) : super(_load(_prefs));
 
@@ -95,6 +101,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         chatHistorySaveMode: _parseChatHistorySaveMode(
           prefs.getString(_kChatHistorySaveMode),
         ),
+        markdownHistoryDirectory:
+            prefs.getString(_kMarkdownHistoryDirectory)?.trim() ?? '',
       );
 
   static ChatHistorySaveMode _parseChatHistorySaveMode(String? rawValue) {
@@ -142,6 +150,18 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setChatHistorySaveMode(ChatHistorySaveMode mode) async {
     await _prefs.setString(_kChatHistorySaveMode, mode.name);
     state = state.copyWith(chatHistorySaveMode: mode);
+  }
+
+  Future<void> setMarkdownHistoryDirectory(String path) async {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) {
+      await _prefs.remove(_kMarkdownHistoryDirectory);
+      state = state.copyWith(markdownHistoryDirectory: '');
+      return;
+    }
+
+    await _prefs.setString(_kMarkdownHistoryDirectory, trimmed);
+    state = state.copyWith(markdownHistoryDirectory: trimmed);
   }
 }
 

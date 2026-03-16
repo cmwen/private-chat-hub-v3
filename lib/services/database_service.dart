@@ -3,12 +3,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/conversation.dart';
+import '../models/conversation_history_snapshot.dart';
+import '../models/history_file_index_entry.dart';
 import '../models/message.dart';
 import '../utils/platform_utils.dart';
 
 class DatabaseService {
   static const _dbName = 'private_chat_hub.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   /// Provide a custom factory/path for testing (e.g. sqflite_ffi in-memory).
   final DatabaseFactory? databaseFactoryOverride;
@@ -42,6 +44,7 @@ class DatabaseService {
   OpenDatabaseOptions _buildOptions() => OpenDatabaseOptions(
         version: _dbVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       );
 
   Future<void> _onCreate(Database db, int version) async {
@@ -73,15 +76,47 @@ class DatabaseService {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE history_file_index (
+        conversationId TEXT PRIMARY KEY,
+        filePath       TEXT NOT NULL UNIQUE,
+        lastModifiedMs INTEGER NOT NULL,
+        fileSize       INTEGER NOT NULL,
+        indexedAt      TEXT NOT NULL,
+        FOREIGN KEY (conversationId)
+          REFERENCES conversations(id) ON DELETE CASCADE
+      )
+    ''');
+
     await db.execute(
       'CREATE INDEX idx_messages_conv ON messages(conversationId)',
     );
     await db.execute(
       'CREATE INDEX idx_conversations_updated ON conversations(updatedAt DESC)',
     );
+    await db.execute(
+      'CREATE INDEX idx_history_file_path ON history_file_index(filePath)',
+    );
   }
 
-  // ── Conversations ───────────────────────────────────────────────────────────
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE history_file_index (
+          conversationId TEXT PRIMARY KEY,
+          filePath       TEXT NOT NULL UNIQUE,
+          lastModifiedMs INTEGER NOT NULL,
+          fileSize       INTEGER NOT NULL,
+          indexedAt      TEXT NOT NULL,
+          FOREIGN KEY (conversationId)
+            REFERENCES conversations(id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_history_file_path ON history_file_index(filePath)',
+      );
+    }
+  }
 
   Future<List<Conversation>> getConversations({
     bool includeArchived = false,
@@ -99,7 +134,9 @@ class DatabaseService {
     final db = await database;
     final rows =
         await db.query('conversations', where: 'id = ?', whereArgs: [id]);
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty) {
+      return null;
+    }
     return Conversation.fromJson(rows.first);
   }
 
@@ -124,11 +161,17 @@ class DatabaseService {
 
   Future<void> deleteConversation(String id) async {
     final db = await database;
-    await db.delete('messages', where: 'conversationId = ?', whereArgs: [id]);
-    await db.delete('conversations', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      await txn.delete(
+        'history_file_index',
+        where: 'conversationId = ?',
+        whereArgs: [id],
+      );
+      await txn
+          .delete('messages', where: 'conversationId = ?', whereArgs: [id]);
+      await txn.delete('conversations', where: 'id = ?', whereArgs: [id]);
+    });
   }
-
-  // ── Messages ────────────────────────────────────────────────────────────────
 
   Future<List<Message>> getMessages(String conversationId) async {
     final db = await database;
@@ -164,7 +207,135 @@ class DatabaseService {
     );
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  Future<HistoryFileIndexEntry?> getHistoryIndexByPath(String filePath) async {
+    final db = await database;
+    final rows = await db.query(
+      'history_file_index',
+      where: 'filePath = ?',
+      whereArgs: [filePath],
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return HistoryFileIndexEntry.fromJson(rows.first);
+  }
+
+  Future<bool> isConversationIndexed(String conversationId) async {
+    final db = await database;
+    final rows = await db.query(
+      'history_file_index',
+      columns: const ['conversationId'],
+      where: 'conversationId = ?',
+      whereArgs: [conversationId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<List<HistoryFileIndexEntry>> getHistoryIndexEntries() async {
+    final db = await database;
+    final rows = await db.query(
+      'history_file_index',
+      orderBy: 'indexedAt DESC',
+    );
+    return rows.map(HistoryFileIndexEntry.fromJson).toList(growable: false);
+  }
+
+  Future<void> replaceIndexedSnapshot({
+    required ConversationHistorySnapshot snapshot,
+    required String filePath,
+    required int lastModifiedMs,
+    required int fileSize,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final existingByPath = await txn.query(
+        'history_file_index',
+        columns: const ['conversationId'],
+        where: 'filePath = ?',
+        whereArgs: [filePath],
+        limit: 1,
+      );
+      final previousConversationId = existingByPath.isNotEmpty
+          ? existingByPath.first['conversationId'] as String
+          : null;
+      if (previousConversationId != null &&
+          previousConversationId != snapshot.conversation.id) {
+        await txn.delete(
+          'messages',
+          where: 'conversationId = ?',
+          whereArgs: [previousConversationId],
+        );
+        await txn.delete(
+          'conversations',
+          where: 'id = ?',
+          whereArgs: [previousConversationId],
+        );
+        await txn.delete(
+          'history_file_index',
+          where: 'conversationId = ?',
+          whereArgs: [previousConversationId],
+        );
+      }
+      await txn.insert(
+        'conversations',
+        snapshot.conversation.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete(
+        'messages',
+        where: 'conversationId = ?',
+        whereArgs: [snapshot.conversation.id],
+      );
+      for (final message in snapshot.messages) {
+        await txn.insert(
+          'messages',
+          _messageToRow(message),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await txn.insert(
+        'history_file_index',
+        HistoryFileIndexEntry(
+          conversationId: snapshot.conversation.id,
+          filePath: filePath,
+          lastModifiedMs: lastModifiedMs,
+          fileSize: fileSize,
+          indexedAt: DateTime.now(),
+        ).toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+  }
+
+  Future<void> deleteIndexedConversation(String conversationId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'history_file_index',
+        where: 'conversationId = ?',
+        whereArgs: [conversationId],
+      );
+      await txn.delete(
+        'messages',
+        where: 'conversationId = ?',
+        whereArgs: [conversationId],
+      );
+      await txn.delete(
+        'conversations',
+        where: 'id = ?',
+        whereArgs: [conversationId],
+      );
+    });
+  }
+
+  Future<void> deleteIndexedConversationByPath(String filePath) async {
+    final entry = await getHistoryIndexByPath(filePath);
+    if (entry == null) {
+      return;
+    }
+    await deleteIndexedConversation(entry.conversationId);
+  }
 
   Map<String, dynamic> _messageToRow(Message msg) => {
         'id': msg.id,

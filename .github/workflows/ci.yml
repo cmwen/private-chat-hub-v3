@@ -59,21 +59,54 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          version="$(grep '^version:' pubspec.yaml | head -1 | awk '{print $2}')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if grep -Eq 'productFlavors[[:space:]]*\{' android/app/build.gradle.kts && grep -Eq 'create\("production"\)|maybeCreate\("production"\)|register\("production"\)|production[[:space:]]*\{' android/app/build.gradle.kts; then
+            echo "has_production_flavor=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_production_flavor=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release
+        shell: bash
+        run: |
+          if [[ "${{ steps.meta.outputs.has_production_flavor }}" == "true" ]]; then
+            flutter build apk --release --flavor production
+          else
+            flutter build apk --release
+          fi
 
       - name: Build release app bundle
-        run: flutter build appbundle --release
+        shell: bash
+        run: |
+          if [[ "${{ steps.meta.outputs.has_production_flavor }}" == "true" ]]; then
+            flutter build appbundle --release --flavor production
+          else
+            flutter build appbundle --release
+          fi
 
       - name: Stage Android build artifacts
         shell: bash
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/private-chat-hub-android.apk
-          cp build/app/outputs/bundle/release/app-release.aab dist/private-chat-hub-android.aab
+          if [[ "${{ steps.meta.outputs.has_production_flavor }}" == "true" ]]; then
+            cp build/app/outputs/flutter-apk/app-production-release.apk "dist/private-chat-hub-android-production-${{ steps.meta.outputs.version }}.apk"
+            cp build/app/outputs/bundle/productionRelease/app-production-release.aab "dist/private-chat-hub-android-production-${{ steps.meta.outputs.version }}.aab"
+          else
+            cp build/app/outputs/flutter-apk/app-release.apk "dist/private-chat-hub-android-${{ steps.meta.outputs.version }}.apk"
+            cp build/app/outputs/bundle/release/app-release.aab "dist/private-chat-hub-android-${{ steps.meta.outputs.version }}.aab"
+          fi
+          (
+            cd dist
+            sha256sum ./* > SHA256SUMS.txt
+          )
 
       - name: Upload Android build artifacts
         uses: actions/upload-artifact@v7
@@ -86,6 +119,13 @@ jobs:
     name: Build macOS
     needs: validate
     runs-on: macos-latest
+    env:
+      MACOS_CERT_BASE64: ${{ secrets.MACOS_CERT_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -97,11 +137,65 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          version="$(grep '^version:' pubspec.yaml | head -1 | awk '{print $2}')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build macOS app
         run: flutter build macos --release
+
+      - name: Import Developer ID certificate
+        if: ${{ env.MACOS_CERT_BASE64 != '' && env.MACOS_CERT_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' }}
+        shell: bash
+        run: |
+          cert_path="$RUNNER_TEMP/macos-signing-cert.p12"
+          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$MACOS_CERT_BASE64" | base64 --decode > "$cert_path"
+          security create-keychain -p runner "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p runner "$keychain_path"
+          security import "$cert_path" -k "$keychain_path" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/xcrun
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -s -k runner "$keychain_path"
+
+      - name: Sign macOS app bundle
+        shell: bash
+        run: |
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "No macOS app bundle found in build output."
+            exit 1
+          fi
+          if [[ -n "$MACOS_SIGNING_IDENTITY" ]]; then
+            codesign --force --deep --options runtime --sign "$MACOS_SIGNING_IDENTITY" "$app_path"
+            echo "signing_mode=developer-id" >> "$GITHUB_ENV"
+          else
+            codesign --force --deep --sign - "$app_path"
+            echo "signing_mode=adhoc" >> "$GITHUB_ENV"
+          fi
+          echo "app_path=$app_path" >> "$GITHUB_ENV"
+          codesign --verify --deep --strict "$app_path"
+          spctl --assess --type execute "$app_path" || true
+
+      - name: Notarize macOS app archive
+        if: ${{ env.MACOS_SIGNING_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_PASSWORD != '' }}
+        shell: bash
+        run: |
+          archive_path="$RUNNER_TEMP/private-chat-hub-macos-${{ steps.meta.outputs.version }}.zip"
+          ditto -c -k --keepParent "$app_path" "$archive_path"
+          xcrun notarytool submit "$archive_path" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$app_path"
 
       - name: Archive macOS app
         shell: bash
@@ -112,8 +206,11 @@ jobs:
             echo "No macOS app bundle found in build output."
             exit 1
           fi
-
-          ditto -c -k --keepParent "$app_path" dist/private-chat-hub-macos.zip
+          ditto -c -k --keepParent "$app_path" "dist/private-chat-hub-macos-${{ steps.meta.outputs.version }}.zip"
+          (
+            cd dist
+            shasum -a 256 ./* > SHA256SUMS.txt
+          )
 
       - name: Upload macOS build artifact
         uses: actions/upload-artifact@v7
@@ -126,6 +223,9 @@ jobs:
     name: Build Windows
     needs: validate
     runs-on: windows-latest
+    env:
+      WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -137,19 +237,46 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Resolve build metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1
+          $version = $versionLine.Line.Split(':', 2)[1].Trim()
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Windows app
         run: flutter build windows --release
 
+      - name: Sign Windows executable
+        if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' && env.WINDOWS_SIGNING_CERT_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP 'windows-signing-cert.pfx'
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
+          & signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certPath /p $env:WINDOWS_SIGNING_CERT_PASSWORD build/windows/x64/runner/Release/private_chat_hub.exe
+
       - name: Archive Windows app
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
           $releaseDir = 'build/windows/x64/runner/Release'
-          $zipPath = 'dist/private-chat-hub-windows.zip'
-          Compress-Archive -Path (Join-Path $releaseDir '*') -DestinationPath $zipPath -Force
+          $bundleDir = 'dist/PrivateChatHub-windows-x64'
+          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+          Copy-Item -Path (Join-Path $releaseDir '*') -Destination $bundleDir -Recurse -Force
+          @(
+            'Private Chat Hub Windows package',
+            '',
+            'This zip contains the runnable Release folder contents.',
+            'If the executable is unsigned, Windows SmartScreen may still warn until the app is signed with a trusted certificate and builds reputation over time.',
+            'Optional code signing can be enabled in CI by supplying WINDOWS_SIGNING_CERT_BASE64 and WINDOWS_SIGNING_CERT_PASSWORD secrets.'
+          ) | Set-Content -Path (Join-Path $bundleDir 'README.txt')
+          Compress-Archive -Path $bundleDir -DestinationPath "dist/private-chat-hub-windows-${{ steps.meta.outputs.version }}.zip" -Force
+          Get-FileHash "dist/private-chat-hub-windows-${{ steps.meta.outputs.version }}.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content -Path 'dist/SHA256SUMS.txt'
 
       - name: Upload Windows build artifact
         uses: actions/upload-artifact@v7

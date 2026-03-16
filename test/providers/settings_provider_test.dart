@@ -64,5 +64,46 @@ void main() {
         'http://127.0.0.1:1234/v1',
       );
     });
+
+    test('persists markdown history directory and supports reset to default',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'settings.markdownHistoryDirectory': '/tmp/private-chat-history',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(settingsProvider).markdownHistoryDirectory,
+        '/tmp/private-chat-history',
+      );
+
+      await container
+          .read(settingsProvider.notifier)
+          .setMarkdownHistoryDirectory('/data/history');
+      expect(
+        container.read(settingsProvider).markdownHistoryDirectory,
+        '/data/history',
+      );
+      expect(
+        prefs.getString('settings.markdownHistoryDirectory'),
+        '/data/history',
+      );
+
+      await container
+          .read(settingsProvider.notifier)
+          .setMarkdownHistoryDirectory('   ');
+      expect(
+        container.read(settingsProvider).markdownHistoryDirectory,
+        isEmpty,
+      );
+      expect(
+        prefs.getString('settings.markdownHistoryDirectory'),
+        isNull,
+      );
+    });
   });
 }

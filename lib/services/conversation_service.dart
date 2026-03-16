@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import '../models/conversation.dart';
 import '../models/conversation_history_snapshot.dart';
+import '../models/history_file_index_entry.dart';
 import '../models/message.dart';
 import 'chat_history_file_service.dart';
 import 'database_service.dart';
@@ -7,6 +10,8 @@ import 'database_service.dart';
 class ConversationService {
   final DatabaseService _db;
   final ChatHistoryFileService _historyFileService;
+
+  Future<void>? _syncInFlight;
 
   ConversationService(
     this._db, {
@@ -16,10 +21,15 @@ class ConversationService {
 
   Future<List<Conversation>> getConversations({
     bool includeArchived = false,
-  }) =>
-      _db.getConversations(includeArchived: includeArchived);
+  }) async {
+    await syncMarkdownHistoryIndex();
+    return _db.getConversations(includeArchived: includeArchived);
+  }
 
-  Future<Conversation?> getConversation(String id) => _db.getConversation(id);
+  Future<Conversation?> getConversation(String id) async {
+    await syncMarkdownHistoryIndex();
+    return _db.getConversation(id);
+  }
 
   Future<Conversation> createConversation({
     String? title,
@@ -64,8 +74,10 @@ class ConversationService {
     }
   }
 
-  Future<List<Message>> getMessages(String conversationId) =>
-      _db.getMessages(conversationId);
+  Future<List<Message>> getMessages(String conversationId) async {
+    await syncMarkdownHistoryIndex();
+    return _db.getMessages(conversationId);
+  }
 
   Future<void> addMessage(Message message) => _db.insertMessage(message);
 
@@ -80,10 +92,19 @@ class ConversationService {
     }
 
     final messages = await _db.getMessages(conversationId);
-    return _historyFileService.saveSnapshot(
+    final snapshot = await _historyFileService.saveSnapshot(
       conversation: conversation,
       messages: messages,
     );
+    final file = await _historyFileService.fileForConversation(conversationId);
+    final stat = await file.stat();
+    await _db.replaceIndexedSnapshot(
+      snapshot: snapshot,
+      filePath: file.path,
+      lastModifiedMs: stat.modified.millisecondsSinceEpoch,
+      fileSize: stat.size,
+    );
+    return snapshot;
   }
 
   Future<ConversationHistorySnapshot?> loadSavedConversationSnapshot(
@@ -96,7 +117,82 @@ class ConversationService {
     return _historyFileService.exists(conversationId);
   }
 
-  Future<void> deleteSavedHistory(String conversationId) {
-    return _historyFileService.delete(conversationId);
+  Future<void> deleteSavedHistory(String conversationId) async {
+    await _historyFileService.delete(conversationId);
+    if (await _db.isConversationIndexed(conversationId)) {
+      await _db.deleteIndexedConversation(conversationId);
+    }
+  }
+
+  Future<String> resolveMarkdownHistoryDirectoryPath() {
+    return _historyFileService.resolveHistoryDirectoryPath();
+  }
+
+  Future<void> syncMarkdownHistoryIndex({bool force = false}) async {
+    if (!force && _syncInFlight != null) {
+      return _syncInFlight!;
+    }
+
+    final future = _performMarkdownHistorySync();
+    _syncInFlight = future.whenComplete(() {
+      if (identical(_syncInFlight, future)) {
+        _syncInFlight = null;
+      }
+    });
+    return _syncInFlight!;
+  }
+
+  Future<void> _performMarkdownHistorySync() async {
+    final files = await _historyFileService.listConversationFiles();
+    final indexedEntries = await _db.getHistoryIndexEntries();
+    final indexedByPath = {
+      for (final entry in indexedEntries) entry.filePath: entry,
+    };
+    final seenPaths = <String>{};
+
+    for (final file in files) {
+      seenPaths.add(file.path);
+      final stat = await file.stat();
+      final indexed = indexedByPath[file.path];
+
+      final unchanged = indexed != null &&
+          indexed.lastModifiedMs == stat.modified.millisecondsSinceEpoch &&
+          indexed.fileSize == stat.size;
+      if (unchanged) {
+        continue;
+      }
+
+      await _indexMarkdownHistoryFile(
+        file: file,
+        stat: stat,
+        existingEntry: indexed,
+      );
+    }
+
+    for (final entry in indexedEntries
+        .where((entry) => !seenPaths.contains(entry.filePath))) {
+      await _db.deleteIndexedConversation(entry.conversationId);
+    }
+  }
+
+  Future<void> _indexMarkdownHistoryFile({
+    required File file,
+    required FileStat stat,
+    required HistoryFileIndexEntry? existingEntry,
+  }) async {
+    try {
+      final snapshot =
+          await _historyFileService.loadSnapshotFromFile(file.path);
+      await _db.replaceIndexedSnapshot(
+        snapshot: snapshot,
+        filePath: file.path,
+        lastModifiedMs: stat.modified.millisecondsSinceEpoch,
+        fileSize: stat.size,
+      );
+    } on FormatException {
+      if (existingEntry != null) {
+        await _db.deleteIndexedConversation(existingEntry.conversationId);
+      }
+    }
   }
 }

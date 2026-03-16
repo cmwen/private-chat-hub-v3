@@ -90,7 +90,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void stopGeneration() {
-    if (state.status != ChatStatus.streaming) return;
+    if (state.status != ChatStatus.streaming) {
+      return;
+    }
     _cancelled = true;
     final stoppedText = state.streamingText;
 
@@ -103,7 +105,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> sendMessage(String text, String conversationId) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) {
+      return;
+    }
     if (state.status == ChatStatus.sending ||
         state.status == ChatStatus.streaming) {
       return;
@@ -113,10 +117,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _pendingTokenUsage = null;
     _pendingAssistantMsg = null;
 
+    final trimmedText = text.trim();
     final userMsg = Message.create(
       conversationId: conversationId,
       role: MessageRole.user,
-      content: text.trim(),
+      content: trimmedText,
       status: MessageStatus.sent,
     );
 
@@ -126,13 +131,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     final conv = await _conversationService.getConversation(conversationId);
     if (conv != null && conv.title == 'New Chat') {
-      final trimmed = text.trim();
-      final newTitle =
-          trimmed.length > 40 ? '${trimmed.substring(0, 40)}...' : trimmed;
+      final newTitle = trimmedText.length > 40
+          ? '${trimmedText.substring(0, 40)}...'
+          : trimmedText;
       await _ref
           .read(conversationsProvider.notifier)
           .renameConversation(conversationId, newTitle);
     }
+
+    final history = await _conversationService.getMessages(conversationId);
 
     final assistantMsg = Message.create(
       conversationId: conversationId,
@@ -146,17 +153,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(status: ChatStatus.streaming, streamingText: '');
 
     try {
-      final history = await _conversationService.getMessages(conversationId);
       final settings = _ref.read(settingsProvider);
+      final conversation =
+          await _conversationService.getConversation(conversationId);
 
       final fullText = await _chatService.sendMessage(
         conversationId: conversationId,
         modelId: state.selectedModelId,
         history: history,
-        userText: text,
+        userText: trimmedText,
+        systemPrompt: conversation?.systemPrompt,
         temperature: settings.temperature,
         onChunk: (chunk) {
-          if (_cancelled) return;
+          if (_cancelled) {
+            return;
+          }
           state = state.copyWith(
             streamingText: state.streamingText + chunk,
           );
@@ -169,7 +180,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
         },
       );
 
-      if (_cancelled) return;
+      if (_cancelled) {
+        return;
+      }
 
       final completedMsg = assistantMsg.copyWith(
         content: fullText,
@@ -182,7 +195,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       state = state.copyWith(status: ChatStatus.idle, streamingText: '');
       _pendingAssistantMsg = null;
     } on ChatServiceException catch (e) {
-      if (_cancelled) return;
+      if (_cancelled) {
+        return;
+      }
       final failedMsg = assistantMsg.copyWith(
         content: 'Error: ${e.message}',
         status: MessageStatus.failed,

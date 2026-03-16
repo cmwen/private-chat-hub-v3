@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/persona_document.dart';
 import '../models/provider_model.dart';
 import '../providers/chat_provider.dart';
+import '../providers/conversation_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/llm_provider.dart';
 import '../services/lm_studio_provider.dart';
@@ -16,6 +18,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
+    final historyDirectory = ref.watch(markdownHistoryDirectoryPathProvider);
+    final personaDocument = ref.watch(personaDocumentProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -69,11 +73,24 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('When to save chat history'),
                 subtitle: Text(
                   '${settings.chatHistorySaveMode.label}\n'
-                  'Saved chats are stored as markdown (.md) files on this device.',
+                  'Saved chats are stored as plain markdown (.md) files.',
                 ),
                 isThreeLine: true,
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showChatHistorySaveModeDialog(context, ref),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: const Text('Plain markdown history directory'),
+                subtitle: _MarkdownHistoryDirectorySubtitle(
+                  historyDirectory: historyDirectory,
+                  personaDocument: personaDocument,
+                  isUsingDefaultDirectory:
+                      settings.markdownHistoryDirectory.trim().isEmpty,
+                ),
+                isThreeLine: true,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showMarkdownHistoryDirectoryDialog(context, ref),
               ),
               _SectionHeader(title: 'Providers'),
               _LmStudioSettingsTile(lmStudioBaseUrl: settings.lmStudioBaseUrl),
@@ -89,7 +106,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Private Chat Hub'),
-                subtitle: Text('v1.1.0'),
+                subtitle: Text('v1.1.1'),
               ),
             ],
           );
@@ -158,6 +175,159 @@ class SettingsScreen extends ConsumerWidget {
         .read(settingsProvider.notifier)
         .setChatHistorySaveMode(selectedMode);
   }
+
+  Future<void> _showMarkdownHistoryDirectoryDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final settings = ref.read(settingsProvider);
+    final effectiveDirectory =
+        await ref.read(markdownHistoryDirectoryPathProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+
+    final controller = TextEditingController(
+      text: settings.markdownHistoryDirectory,
+    );
+    final selectedPath = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Plain markdown history directory'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This directory is the authoritative plain markdown store. '
+                'persona.md is read from the same folder, and SQLite only keeps a derived index/cache for performance.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Directory path',
+                  hintText: effectiveDirectory,
+                  helperText:
+                      'Leave blank to use the app-managed default directory.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Current effective directory:\n$effectiveDirectory',
+                style: Theme.of(dialogContext).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          if (settings.markdownHistoryDirectory.trim().isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(''),
+              child: const Text('Use default'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              controller.text.trim(),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedPath == null) {
+      return;
+    }
+
+    await ref
+        .read(settingsProvider.notifier)
+        .setMarkdownHistoryDirectory(selectedPath);
+    ref.invalidate(markdownHistoryDirectoryPathProvider);
+    ref.invalidate(personaDocumentProvider);
+    ref.invalidate(newConversationDefaultsProvider);
+
+    final updatedDirectory =
+        await ref.read(markdownHistoryDirectoryPathProvider.future);
+    await ref
+        .read(conversationServiceProvider)
+        .syncMarkdownHistoryIndex(force: true);
+    await ref.read(conversationsProvider.notifier).refresh();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Plain markdown history directory set to $updatedDirectory',
+            ),
+          ),
+        );
+    }
+  }
+}
+
+class _MarkdownHistoryDirectorySubtitle extends StatelessWidget {
+  final AsyncValue<String> historyDirectory;
+  final AsyncValue<PersonaDocument?> personaDocument;
+  final bool isUsingDefaultDirectory;
+
+  const _MarkdownHistoryDirectorySubtitle({
+    required this.historyDirectory,
+    required this.personaDocument,
+    required this.isUsingDefaultDirectory,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final buffer = StringBuffer();
+    historyDirectory.when(
+      data: (path) {
+        buffer.writeln(path);
+        buffer.write(
+          isUsingDefaultDirectory
+              ? 'Using the app-managed default directory. '
+              : 'Using a custom directory. ',
+        );
+      },
+      error: (_, __) {
+        buffer.write(
+            'Unable to resolve the current markdown history directory. ');
+      },
+      loading: () {
+        buffer.write('Resolving current markdown history directory... ');
+      },
+    );
+
+    personaDocument.when(
+      data: (persona) {
+        if (persona == null) {
+          buffer.write(
+              'Place persona.md here to share default model and system prompt settings.');
+        } else {
+          buffer.write(
+            'persona.md loaded for "${persona.name}". SQLite mirrors these markdown files as an index/cache.',
+          );
+        }
+      },
+      error: (_, __) {
+        buffer.write('persona.md could not be read from this directory.');
+      },
+      loading: () {
+        buffer.write('Checking persona.md...');
+      },
+    );
+
+    return Text(buffer.toString().trim());
+  }
 }
 
 class _OllamaSettingsTile extends ConsumerStatefulWidget {
@@ -202,7 +372,9 @@ class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
 
   Color _statusColor(BuildContext context, ProviderStatus status) {
     final cs = Theme.of(context).colorScheme;
-    if (status == ProviderStatus.ready) return Colors.green;
+    if (status == ProviderStatus.ready) {
+      return Colors.green;
+    }
     if (status == ProviderStatus.offline || status == ProviderStatus.error) {
       return cs.error;
     }
@@ -279,7 +451,9 @@ class _LmStudioSettingsTileState extends ConsumerState<_LmStudioSettingsTile> {
 
   Color _statusColor(BuildContext context, ProviderStatus status) {
     final cs = Theme.of(context).colorScheme;
-    if (status == ProviderStatus.ready) return Colors.green;
+    if (status == ProviderStatus.ready) {
+      return Colors.green;
+    }
     if (status == ProviderStatus.offline || status == ProviderStatus.error) {
       return cs.error;
     }
@@ -417,7 +591,9 @@ class _ProviderUrlDialogState extends State<_ProviderUrlDialog> {
           onPressed: () async {
             final url = widget.controller.text.trim();
             await widget.onSave(url);
-            if (context.mounted) Navigator.of(context).pop();
+            if (context.mounted) {
+              Navigator.of(context).pop();
+            }
           },
           child: const Text('Save'),
         ),

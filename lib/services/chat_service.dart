@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import '../models/chat_response.dart';
 import '../models/message.dart';
 import '../models/provider_model.dart';
@@ -29,6 +27,7 @@ class ChatService {
     required List<Message> history,
     required String userText,
     required void Function(String chunk) onChunk,
+    String? systemPrompt,
     double temperature = 0.7,
     void Function(int inputTokens, int outputTokens)? onUsage,
   }) async {
@@ -45,13 +44,25 @@ class ChatService {
     }
 
     final rawId = _registry.rawModelId(modelId);
-    final params = ChatParams(temperature: temperature);
+    final params = ChatParams(
+      temperature: temperature,
+      systemPrompt: systemPrompt,
+    );
+    final requestMessages = history
+        .where(
+          (message) =>
+              message.status != MessageStatus.draft &&
+              message.status != MessageStatus.queued &&
+              message.status != MessageStatus.sending &&
+              message.content.trim().isNotEmpty,
+        )
+        .toList(growable: false);
 
     final buffer = StringBuffer();
 
     await for (final response in provider.sendMessage(
       modelId: rawId,
-      messages: history,
+      messages: requestMessages,
       params: params,
     )) {
       switch (response) {

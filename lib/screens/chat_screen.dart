@@ -35,14 +35,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<String> _ensureConversation() async {
     var activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) {
-      final preferredModelId = ref.read(chatProvider).selectedModelId;
+      final defaults = await ref.read(newConversationDefaultsProvider.future);
       final selectedModelId = await ref
           .read(providerRegistryProvider)
-          .resolvePreferredModelId(preferredModelId);
+          .resolvePreferredModelId(defaults.preferredModelId);
       final conv =
           await ref.read(conversationsProvider.notifier).createConversation(
                 title: 'New Chat',
                 modelId: selectedModelId,
+                systemPrompt: defaults.systemPrompt,
               );
       if (mounted) {
         ref.read(activeConversationIdProvider.notifier).state = conv.id;
@@ -72,14 +73,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return false;
     }
 
-    final preferredModelId = ref.read(chatProvider).selectedModelId;
+    final defaults = await ref.read(newConversationDefaultsProvider.future);
     final selectedModelId = await ref
         .read(providerRegistryProvider)
-        .resolvePreferredModelId(preferredModelId);
+        .resolvePreferredModelId(defaults.preferredModelId);
     final conv =
         await ref.read(conversationsProvider.notifier).createConversation(
               title: 'New Chat',
               modelId: selectedModelId,
+              systemPrompt: defaults.systemPrompt,
             );
     if (!mounted) {
       return false;
@@ -112,6 +114,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     if (conversation != null) {
       ref.read(chatProvider.notifier).selectModel(conversation.modelId);
+      ref.invalidate(messagesProvider(conversationId));
     }
     return true;
   }
@@ -131,6 +134,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .read(conversationServiceProvider)
         .saveConversationSnapshot(activeId);
     ref.invalidate(savedHistoryExistsProvider(activeId));
+    await ref.read(conversationsProvider.notifier).refresh();
 
     if (!mounted || !showFeedback) {
       return;
@@ -181,8 +185,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: const Text('Save chat before leaving?'),
         content: Text(
           hasSavedHistory
-              ? 'This chat already has a saved markdown history file. Save again to update it before leaving?'
-              : 'This chat is still temporary. Save it as a markdown (.md) history file before leaving?',
+              ? 'This chat already has a saved plain markdown history file. Save again to update it before leaving?'
+              : 'This chat is still temporary. Save it as a plain markdown (.md) history file before leaving?',
         ),
         actions: [
           TextButton(
@@ -452,19 +456,38 @@ class _MessageList extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
+class _EmptyState extends ConsumerWidget {
   final void Function(String text) onSendSample;
 
   const _EmptyState({required this.onSendSample});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final defaults = ref.watch(newConversationDefaultsProvider);
     const samplePrompts = [
       'Tell me about yourself',
       'What can you help me with?',
       'Write a short poem',
     ];
+
+    final personaSummary = defaults.maybeWhen(
+      data: (value) {
+        final personaName = value.personaDocument?.name;
+        final hasSystemPrompt = value.systemPrompt?.trim().isNotEmpty == true;
+        if (personaName == null && !hasSystemPrompt) {
+          return null;
+        }
+        if (personaName != null && hasSystemPrompt) {
+          return 'New chats use persona.md from $personaName for the default model and system prompt.';
+        }
+        if (personaName != null) {
+          return 'New chats use persona.md from $personaName for the default model.';
+        }
+        return 'New chats apply the shared persona.md system prompt from your markdown history directory.';
+      },
+      orElse: () => null,
+    );
 
     return Center(
       child: Padding(
@@ -484,10 +507,11 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Chat with your AI assistant',
+              personaSummary ?? 'Chat with your AI assistant',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.outline,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             Wrap(

@@ -3,23 +3,76 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../models/conversation.dart';
 import '../models/message.dart';
+import '../models/persona_document.dart';
 import '../services/chat_history_file_service.dart';
 import '../services/conversation_service.dart';
 import '../services/database_service.dart';
+import '../services/persona_md_service.dart';
 import 'settings_provider.dart';
+
+class NewConversationDefaults {
+  final String preferredModelId;
+  final String? systemPrompt;
+  final PersonaDocument? personaDocument;
+
+  const NewConversationDefaults({
+    required this.preferredModelId,
+    this.systemPrompt,
+    this.personaDocument,
+  });
+}
 
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
   return DatabaseService();
 });
 
 final chatHistoryFileServiceProvider = Provider<ChatHistoryFileService>((ref) {
-  return const ChatHistoryFileService();
+  final historyDirectory = ref.watch(
+    settingsProvider.select((settings) => settings.markdownHistoryDirectory),
+  );
+  return ChatHistoryFileService(
+    baseDirectoryOverride:
+        historyDirectory.trim().isEmpty ? null : historyDirectory.trim(),
+  );
+});
+
+final personaMdServiceProvider = Provider<PersonaMdService>((ref) {
+  return PersonaMdService();
 });
 
 final conversationServiceProvider = Provider<ConversationService>((ref) {
   return ConversationService(
     ref.watch(databaseServiceProvider),
     historyFileService: ref.watch(chatHistoryFileServiceProvider),
+  );
+});
+
+final markdownHistoryDirectoryPathProvider =
+    FutureProvider<String>((ref) async {
+  return ref
+      .watch(conversationServiceProvider)
+      .resolveMarkdownHistoryDirectoryPath();
+});
+
+final personaDocumentProvider = FutureProvider<PersonaDocument?>((ref) async {
+  final directoryPath =
+      await ref.watch(markdownHistoryDirectoryPathProvider.future);
+  return ref.watch(personaMdServiceProvider).loadFromDirectory(directoryPath);
+});
+
+final newConversationDefaultsProvider =
+    FutureProvider<NewConversationDefaults>((ref) async {
+  final settings = ref.watch(settingsProvider);
+  PersonaDocument? persona;
+  try {
+    persona = await ref.watch(personaDocumentProvider.future);
+  } catch (_) {
+    persona = null;
+  }
+  return NewConversationDefaults(
+    preferredModelId: persona?.defaultModel ?? settings.defaultModelId,
+    systemPrompt: persona?.defaultSystemPrompt,
+    personaDocument: persona,
   );
 });
 
@@ -38,20 +91,26 @@ class ConversationsNotifier extends StateNotifier<List<Conversation>> {
 
   Future<void> _load() async {
     final convs = await _service.getConversations();
-    if (mounted) state = convs;
+    if (mounted) {
+      state = convs;
+    }
   }
 
   Future<Conversation> createConversation({
     String? title,
-    String modelId = 'mock:default',
+    required String modelId,
+    String? systemPrompt,
   }) async {
     final conv = await _service.createConversation(
       title: title,
       modelId: modelId,
+      systemPrompt: systemPrompt,
     );
     await _load();
     return conv;
   }
+
+  Future<void> refresh() => _load();
 
   Future<void> deleteConversation(String id) async {
     await _service.deleteConversation(id);
@@ -110,8 +169,12 @@ class MessagesNotifier extends StateNotifier<List<Message>> {
 
   Future<void> _load() async {
     final msgs = await _service.getMessages(_conversationId);
-    if (mounted) state = msgs;
+    if (mounted) {
+      state = msgs;
+    }
   }
+
+  Future<void> refresh() => _load();
 
   Future<void> addMessage(Message message) async {
     await _service.addMessage(message);

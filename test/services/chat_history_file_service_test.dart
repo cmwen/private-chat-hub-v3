@@ -81,6 +81,23 @@ void main() {
       expect(loadedSnapshot.messages[1].costUsd, 0.42);
     });
 
+    test('uses the configured directory as the authoritative markdown root',
+        () async {
+      await service.saveSnapshot(
+        conversation: conversation,
+        messages: messages,
+      );
+
+      expect(
+        File('${tempDir.path}/${conversation.id}.md').existsSync(),
+        isTrue,
+      );
+      expect(
+        Directory('${tempDir.path}/history').existsSync(),
+        isFalse,
+      );
+    });
+
     test('exists and delete follow saved file lifecycle', () async {
       expect(await service.exists(conversation.id), isFalse);
 

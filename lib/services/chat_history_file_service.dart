@@ -38,7 +38,7 @@ class ChatHistoryFileService {
       messages: List<Message>.unmodifiable(messages),
       savedAt: DateTime.now(),
     );
-    final file = await _fileForConversation(conversation.id);
+    final file = await fileForConversation(conversation.id);
     await file.parent.create(recursive: true);
 
     final tempFile = File('${file.path}.tmp');
@@ -53,40 +53,78 @@ class ChatHistoryFileService {
 
   Future<ConversationHistorySnapshot?> loadSnapshot(
       String conversationId) async {
-    final file = await _fileForConversation(conversationId);
+    final file = await fileForConversation(conversationId);
     if (!await file.exists()) {
       return null;
     }
 
-    return _parseSnapshot(await file.readAsString(), file.path);
+    return parseSnapshot(
+      await file.readAsString(),
+      sourcePath: file.path,
+    );
+  }
+
+  Future<ConversationHistorySnapshot> loadSnapshotFromFile(
+      String filePath) async {
+    final file = File(filePath);
+    return parseSnapshot(
+      await file.readAsString(),
+      sourcePath: file.path,
+    );
   }
 
   Future<bool> exists(String conversationId) async {
-    final file = await _fileForConversation(conversationId);
+    final file = await fileForConversation(conversationId);
     return file.exists();
   }
 
   Future<void> delete(String conversationId) async {
-    final file = await _fileForConversation(conversationId);
+    final file = await fileForConversation(conversationId);
     if (await file.exists()) {
       await file.delete();
     }
   }
 
-  Future<File> _fileForConversation(String conversationId) async {
-    final dir = await _historyDirectory();
+  Future<File> fileForConversation(String conversationId) async {
+    final dir = await historyDirectory();
     return File(p.join(dir.path, '$conversationId.md'));
   }
 
-  Future<Directory> _historyDirectory() async {
-    if (baseDirectoryOverride != null) {
-      return Directory(p.join(baseDirectoryOverride!, 'history'));
+  Future<Directory> historyDirectory() async {
+    final path = await resolveHistoryDirectoryPath();
+    return Directory(path);
+  }
+
+  Future<String> resolveHistoryDirectoryPath() async {
+    if (baseDirectoryOverride != null &&
+        baseDirectoryOverride!.trim().isNotEmpty) {
+      return p.normalize(baseDirectoryOverride!.trim());
     }
 
     final root = isDesktopPlatform
         ? await getApplicationSupportDirectory()
         : await getApplicationDocumentsDirectory();
-    return Directory(p.join(root.path, 'history'));
+    return p.join(root.path, 'history');
+  }
+
+  Future<List<File>> listConversationFiles() async {
+    final dir = await historyDirectory();
+    if (!await dir.exists()) {
+      return const [];
+    }
+
+    final entries = await dir
+        .list()
+        .where(
+          (entity) =>
+              entity is File &&
+              p.extension(entity.path).toLowerCase() == '.md' &&
+              p.basename(entity.path).toLowerCase() != 'persona.md',
+        )
+        .cast<File>()
+        .toList();
+    entries.sort((a, b) => a.path.compareTo(b.path));
+    return entries;
   }
 
   String _serializeSnapshot(ConversationHistorySnapshot snapshot) {
@@ -150,8 +188,10 @@ class ChatHistoryFileService {
     return buffer.toString();
   }
 
-  ConversationHistorySnapshot _parseSnapshot(
-      String content, String sourcePath) {
+  ConversationHistorySnapshot parseSnapshot(
+    String content, {
+    String sourcePath = 'history.md',
+  }) {
     final normalized = content.replaceAll('\r\n', '\n');
     final lines = normalized.split('\n');
     final headerEnd = lines.indexOf('---');
