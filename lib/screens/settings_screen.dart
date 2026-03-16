@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/provider_model.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/llm_provider.dart';
+import '../services/lm_studio_provider.dart';
 import '../services/ollama_provider.dart';
 import '../utils/platform_utils.dart';
 
@@ -67,13 +69,14 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('When to save chat history'),
                 subtitle: Text(
                   '${settings.chatHistorySaveMode.label}\n'
-                  'Saved chats are stored as plain-text files on this device.',
+                  'Saved chats are stored as markdown (.md) files on this device.',
                 ),
                 isThreeLine: true,
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showChatHistorySaveModeDialog(context, ref),
               ),
               _SectionHeader(title: 'Providers'),
+              _LmStudioSettingsTile(lmStudioBaseUrl: settings.lmStudioBaseUrl),
               _OllamaSettingsTile(ollamaBaseUrl: settings.ollamaBaseUrl),
               ListTile(
                 leading: const Icon(Icons.smartphone_outlined),
@@ -86,7 +89,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Private Chat Hub'),
-                subtitle: Text('v1.0.0 – Phase 1'),
+                subtitle: Text('v1.1.0'),
               ),
             ],
           );
@@ -168,9 +171,6 @@ class _OllamaSettingsTile extends ConsumerStatefulWidget {
 }
 
 class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
-  bool _testing = false;
-  String? _testResult;
-
   @override
   Widget build(BuildContext context) {
     final ollamaStatus =
@@ -213,94 +213,142 @@ class _OllamaSettingsTileState extends ConsumerState<_OllamaSettingsTile> {
     final controller = TextEditingController(text: widget.ollamaBaseUrl);
     showDialog<void>(
       context: context,
-      builder: (ctx) => _OllamaDialog(
+      builder: (ctx) => _ProviderUrlDialog(
+        title: 'Ollama Server',
+        hintText: 'http://localhost:11434',
+        helperText:
+            'Use localhost for this computer or a LAN URL for another device.',
         controller: controller,
-        testing: _testing,
-        testResult: _testResult,
-        onTest: () async {
-          setState(() {
-            _testing = true;
-            _testResult = null;
-          });
-          final url = controller.text.trim();
-          if (url.isEmpty) {
-            setState(() {
-              _testing = false;
-              _testResult = 'Enter a URL first';
-            });
-            return;
+        testConnection: (url) async {
+          if (url.trim().isEmpty) {
+            return ProviderHealth(
+              status: ProviderStatus.unconfigured,
+              errorMessage: 'Enter a URL first',
+            );
           }
-          final tempProvider = OllamaProvider(baseUrl: url);
-          final health = await tempProvider.checkHealth();
-          if (mounted) {
-            setState(() {
-              _testing = false;
-              _testResult = health.status == ProviderStatus.ready
-                  ? '✓ Connected'
-                  : '✗ ${health.errorMessage ?? health.status.name}';
-            });
-          }
+          return OllamaProvider(baseUrl: url).checkHealth();
         },
         onSave: (url) async {
           await ref.read(settingsProvider.notifier).setOllamaBaseUrl(url);
           final ollamaInst = ref.read(ollamaProviderInstance);
           ollamaInst.updateBaseUrl(url);
           await ollamaInst.initialize();
-          setState(() {
-            _testing = false;
-            _testResult = null;
-          });
         },
       ),
     );
   }
 }
 
-class _OllamaDialog extends StatefulWidget {
+class _LmStudioSettingsTile extends ConsumerStatefulWidget {
+  final String lmStudioBaseUrl;
+
+  const _LmStudioSettingsTile({required this.lmStudioBaseUrl});
+
+  @override
+  ConsumerState<_LmStudioSettingsTile> createState() =>
+      _LmStudioSettingsTileState();
+}
+
+class _LmStudioSettingsTileState extends ConsumerState<_LmStudioSettingsTile> {
+  @override
+  Widget build(BuildContext context) {
+    final lmStudioStatus =
+        ref.watch(lmStudioProviderInstance.select((p) => p.currentStatus));
+
+    return ListTile(
+      leading: Icon(
+        Icons.terminal_outlined,
+        color: _statusColor(context, lmStudioStatus),
+      ),
+      title: const Text('LM Studio (Local Server)'),
+      subtitle: Text(
+        widget.lmStudioBaseUrl,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StatusDot(status: lmStudioStatus),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () => _showLmStudioDialog(context),
+    );
+  }
+
+  Color _statusColor(BuildContext context, ProviderStatus status) {
+    final cs = Theme.of(context).colorScheme;
+    if (status == ProviderStatus.ready) return Colors.green;
+    if (status == ProviderStatus.offline || status == ProviderStatus.error) {
+      return cs.error;
+    }
+    return cs.outline;
+  }
+
+  void _showLmStudioDialog(BuildContext context) {
+    final controller = TextEditingController(text: widget.lmStudioBaseUrl);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _ProviderUrlDialog(
+        title: 'LM Studio Server',
+        hintText: LmStudioProvider.defaultBaseUrl,
+        helperText:
+            'The default local server is http://localhost:1234/v1. If you omit /v1, it will be added automatically.',
+        controller: controller,
+        testConnection: (url) async {
+          return LmStudioProvider(baseUrl: url).checkHealth();
+        },
+        onSave: (url) async {
+          await ref.read(settingsProvider.notifier).setLmStudioBaseUrl(url);
+          final lmStudioInst = ref.read(lmStudioProviderInstance);
+          lmStudioInst.updateBaseUrl(url);
+          await lmStudioInst.initialize();
+        },
+      ),
+    );
+  }
+}
+
+class _ProviderUrlDialog extends StatefulWidget {
+  final String title;
+  final String hintText;
+  final String helperText;
   final TextEditingController controller;
-  final bool testing;
-  final String? testResult;
-  final VoidCallback onTest;
+  final Future<ProviderHealth> Function(String url) testConnection;
   final Future<void> Function(String url) onSave;
 
-  const _OllamaDialog({
+  const _ProviderUrlDialog({
+    required this.title,
+    required this.hintText,
+    required this.helperText,
     required this.controller,
-    required this.testing,
-    required this.testResult,
-    required this.onTest,
+    required this.testConnection,
     required this.onSave,
   });
 
   @override
-  State<_OllamaDialog> createState() => _OllamaDialogState();
+  State<_ProviderUrlDialog> createState() => _ProviderUrlDialogState();
 }
 
-class _OllamaDialogState extends State<_OllamaDialog> {
-  late bool _testing;
+class _ProviderUrlDialogState extends State<_ProviderUrlDialog> {
+  bool _testing = false;
   String? _testResult;
-
-  @override
-  void initState() {
-    super.initState();
-    _testing = widget.testing;
-    _testResult = widget.testResult;
-  }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Ollama Server'),
+      title: Text(widget.title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(
             controller: widget.controller,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Base URL',
-              hintText: 'http://localhost:11434',
-              helperText:
-                  'Use localhost for this computer or a LAN URL for another device.',
+              hintText: widget.hintText,
+              helperText: widget.helperText,
             ),
             keyboardType: TextInputType.url,
             autofocus: true,
@@ -324,8 +372,7 @@ class _OllamaDialogState extends State<_OllamaDialog> {
                           });
                           return;
                         }
-                        final tempProvider = OllamaProvider(baseUrl: url);
-                        final health = await tempProvider.checkHealth();
+                        final health = await widget.testConnection(url);
                         if (mounted) {
                           setState(() {
                             _testing = false;

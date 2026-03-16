@@ -51,6 +51,37 @@ class ProviderRegistry {
     return results;
   }
 
+  Future<String> resolvePreferredModelId(
+    String preferredModelId, {
+    String fallbackModelId = 'mock:default',
+  }) async {
+    final preferredProvider = resolveProvider(preferredModelId);
+    if (preferredProvider != null &&
+        preferredProvider.currentStatus == ProviderStatus.ready) {
+      final preferredModels = await preferredProvider.listModels();
+      if (preferredModels
+          .any((model) => model.qualifiedId == preferredModelId)) {
+        return preferredModelId;
+      }
+    }
+
+    final fallbackProvider = resolveProvider(fallbackModelId);
+    if (fallbackProvider != null &&
+        fallbackProvider.currentStatus == ProviderStatus.ready) {
+      final fallbackModels = await fallbackProvider.listModels();
+      if (fallbackModels.any((model) => model.qualifiedId == fallbackModelId)) {
+        return fallbackModelId;
+      }
+    }
+
+    final models = await getAllModels();
+    if (models.isNotEmpty) {
+      return models.first.qualifiedId;
+    }
+
+    return fallbackModelId;
+  }
+
   Future<void> initializeAll() async {
     for (final provider in _providers.values) {
       await provider.initialize();

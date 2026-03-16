@@ -70,6 +70,12 @@ class ConversationsNotifier extends StateNotifier<List<Conversation>> {
     await _maybeAutoSaveConversation(id);
   }
 
+  Future<void> setConversationModel(String id, String modelId) async {
+    await _service.setConversationModel(id, modelId);
+    await _load();
+    await _maybeAutoSaveConversation(id);
+  }
+
   Future<void> _maybeAutoSaveConversation(String conversationId) async {
     final saveMode = _ref.read(settingsProvider).chatHistorySaveMode;
     if (saveMode != ChatHistorySaveMode.automatic) {

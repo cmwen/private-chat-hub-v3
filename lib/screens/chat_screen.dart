@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/conversation.dart';
 import '../models/message.dart';
 import '../models/provider_model.dart';
 import '../providers/chat_provider.dart';
@@ -34,14 +35,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<String> _ensureConversation() async {
     var activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) {
-      final settings = ref.read(settingsProvider);
+      final preferredModelId = ref.read(chatProvider).selectedModelId;
+      final selectedModelId = await ref
+          .read(providerRegistryProvider)
+          .resolvePreferredModelId(preferredModelId);
       final conv =
           await ref.read(conversationsProvider.notifier).createConversation(
                 title: 'New Chat',
-                modelId: settings.defaultModelId,
+                modelId: selectedModelId,
               );
       if (mounted) {
         ref.read(activeConversationIdProvider.notifier).state = conv.id;
+        ref.read(chatProvider.notifier).selectModel(selectedModelId);
         ref.invalidate(savedHistoryExistsProvider(conv.id));
       }
       activeId = conv.id;
@@ -67,17 +72,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return false;
     }
 
-    final settings = ref.read(settingsProvider);
+    final preferredModelId = ref.read(chatProvider).selectedModelId;
+    final selectedModelId = await ref
+        .read(providerRegistryProvider)
+        .resolvePreferredModelId(preferredModelId);
     final conv =
         await ref.read(conversationsProvider.notifier).createConversation(
               title: 'New Chat',
-              modelId: settings.defaultModelId,
+              modelId: selectedModelId,
             );
     if (!mounted) {
       return false;
     }
 
     ref.read(activeConversationIdProvider.notifier).state = conv.id;
+    ref.read(chatProvider.notifier).selectModel(selectedModelId);
     ref.invalidate(savedHistoryExistsProvider(conv.id));
     return true;
   }
@@ -94,6 +103,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     ref.read(activeConversationIdProvider.notifier).state = conversationId;
+    Conversation? conversation;
+    for (final item in ref.read(conversationsProvider)) {
+      if (item.id == conversationId) {
+        conversation = item;
+        break;
+      }
+    }
+    if (conversation != null) {
+      ref.read(chatProvider.notifier).selectModel(conversation.modelId);
+    }
     return true;
   }
 
@@ -162,8 +181,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: const Text('Save chat before leaving?'),
         content: Text(
           hasSavedHistory
-              ? 'This chat already has a saved history file. Save again to update it before leaving?'
-              : 'This chat is still temporary. Save it as a plain-text history file before leaving?',
+              ? 'This chat already has a saved markdown history file. Save again to update it before leaving?'
+              : 'This chat is still temporary. Save it as a markdown (.md) history file before leaving?',
         ),
         actions: [
           TextButton(
@@ -552,10 +571,23 @@ class _ModelPickerContent extends ConsumerWidget {
                               model.qualifiedId == chatState.selectedModelId
                                   ? const Icon(Icons.check_circle_rounded)
                                   : null,
-                          onTap: () {
+                          onTap: () async {
+                            final activeConversationId =
+                                ref.read(activeConversationIdProvider);
                             ref
                                 .read(chatProvider.notifier)
                                 .selectModel(model.qualifiedId);
+                            if (activeConversationId != null) {
+                              await ref
+                                  .read(conversationsProvider.notifier)
+                                  .setConversationModel(
+                                    activeConversationId,
+                                    model.qualifiedId,
+                                  );
+                            }
+                            if (!context.mounted) {
+                              return;
+                            }
                             Navigator.of(context).pop();
                           },
                         ),

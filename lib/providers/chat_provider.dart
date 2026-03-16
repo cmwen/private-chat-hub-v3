@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../models/message.dart';
 import '../services/chat_service.dart';
 import '../services/conversation_service.dart';
+import '../services/lm_studio_provider.dart';
 import '../services/mock_provider.dart';
 import '../services/ollama_provider.dart';
 import '../services/provider_registry.dart';
@@ -19,10 +20,18 @@ final ollamaProviderInstance = Provider<OllamaProvider>((ref) {
   return provider;
 });
 
+final lmStudioProviderInstance = Provider<LmStudioProvider>((ref) {
+  final url = ref.watch(settingsProvider.select((s) => s.lmStudioBaseUrl));
+  final provider = LmStudioProvider(baseUrl: url);
+  Future.microtask(provider.initialize);
+  return provider;
+});
+
 final providerRegistryProvider = Provider<ProviderRegistry>((ref) {
   final registry = ProviderRegistry();
   registry.register(MockProvider());
   registry.register(ref.watch(ollamaProviderInstance));
+  registry.register(ref.watch(lmStudioProviderInstance));
   return registry;
 });
 
@@ -69,8 +78,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Message? _pendingAssistantMsg;
   TokenUsage? _pendingTokenUsage;
 
-  ChatNotifier(this._chatService, this._conversationService, this._ref)
-      : super(const ChatState());
+  ChatNotifier(
+    this._chatService,
+    this._conversationService,
+    this._ref, {
+    required String initialModelId,
+  }) : super(ChatState(selectedModelId: initialModelId));
 
   void selectModel(String modelId) {
     state = state.copyWith(selectedModelId: modelId);
@@ -220,5 +233,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
 final chatProvider = StateNotifierProvider<ChatNotifier, ChatState>((ref) {
   final chatService = ref.watch(chatServiceProvider);
   final conversationService = ref.watch(conversationServiceProvider);
-  return ChatNotifier(chatService, conversationService, ref);
+  final defaultModelId =
+      ref.watch(settingsProvider.select((s) => s.defaultModelId));
+  return ChatNotifier(
+    chatService,
+    conversationService,
+    ref,
+    initialModelId: defaultModelId,
+  );
 });

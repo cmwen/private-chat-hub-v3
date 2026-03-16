@@ -135,8 +135,10 @@ class OllamaProvider implements LlmProvider {
   @override
   Future<AiModel?> getModelInfo(String modelId) async {
     final models = await listModels();
+    final qualifiedId =
+        modelId.startsWith('$providerId:') ? modelId : '$providerId:$modelId';
     try {
-      return models.firstWhere((m) => m.qualifiedId == 'ollama:$modelId');
+      return models.firstWhere((m) => m.qualifiedId == qualifiedId);
     } catch (_) {
       return null;
     }

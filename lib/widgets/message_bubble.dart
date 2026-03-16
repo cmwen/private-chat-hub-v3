@@ -22,9 +22,8 @@ class MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final text = streamingOverride ?? message.content;
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final maxBubbleWidth = isWideLayout(screenWidth)
-        ? desktopMessageMaxWidth
-        : screenWidth * 0.82;
+    final maxBubbleWidth =
+        isWideLayout(screenWidth) ? desktopMessageMaxWidth : screenWidth * 0.82;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -49,7 +48,8 @@ class MessageBubble extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isUser
                       ? theme.colorScheme.primaryContainer

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.privatechathub" "\0"
-            VALUE "FileDescription", "private_chat_hub" "\0"
+            VALUE "CompanyName", "cmwen" "\0"
+            VALUE "FileDescription", "Private Chat Hub" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "private_chat_hub" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.privatechathub. All rights reserved." "\0"
+            VALUE "InternalName", "Private Chat Hub" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 cmwen. All rights reserved." "\0"
             VALUE "OriginalFilename", "private_chat_hub.exe" "\0"
-            VALUE "ProductName", "private_chat_hub" "\0"
+            VALUE "ProductName", "Private Chat Hub" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

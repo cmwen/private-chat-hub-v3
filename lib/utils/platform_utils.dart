@@ -9,7 +9,8 @@ bool get isDesktopPlatform {
   return switch (defaultTargetPlatform) {
     TargetPlatform.macOS ||
     TargetPlatform.windows ||
-    TargetPlatform.linux => true,
+    TargetPlatform.linux =>
+      true,
     _ => false,
   };
 }

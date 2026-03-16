@@ -72,7 +72,9 @@ class MockProvider implements LlmProvider {
   @override
   Future<AiModel?> getModelInfo(String modelId) async {
     try {
-      return _mockModels.firstWhere((m) => m.qualifiedId == modelId);
+      final qualifiedId =
+          modelId.contains(':') ? modelId : '$providerId:$modelId';
+      return _mockModels.firstWhere((m) => m.qualifiedId == qualifiedId);
     } catch (_) {
       return null;
     }

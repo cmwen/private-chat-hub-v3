@@ -57,6 +57,13 @@ class ConversationService {
     }
   }
 
+  Future<void> setConversationModel(String id, String modelId) async {
+    final conv = await _db.getConversation(id);
+    if (conv != null) {
+      await _db.updateConversation(conv.copyWith(modelId: modelId));
+    }
+  }
+
   Future<List<Message>> getMessages(String conversationId) =>
       _db.getMessages(conversationId);
 

@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/lm_studio_provider.dart';
+
 enum ChatHistorySaveMode { automatic, askBeforeSaving, manualOnly }
 
 extension ChatHistorySaveModeX on ChatHistorySaveMode {
@@ -34,6 +36,7 @@ class AppSettings {
   final double temperature;
   final String defaultModelId;
   final String ollamaBaseUrl;
+  final String lmStudioBaseUrl;
   final ChatHistorySaveMode chatHistorySaveMode;
 
   const AppSettings({
@@ -42,6 +45,7 @@ class AppSettings {
     this.temperature = 0.7,
     this.defaultModelId = 'mock:default',
     this.ollamaBaseUrl = '',
+    this.lmStudioBaseUrl = LmStudioProvider.defaultBaseUrl,
     this.chatHistorySaveMode = ChatHistorySaveMode.automatic,
   });
 
@@ -51,6 +55,7 @@ class AppSettings {
     double? temperature,
     String? defaultModelId,
     String? ollamaBaseUrl,
+    String? lmStudioBaseUrl,
     ChatHistorySaveMode? chatHistorySaveMode,
   }) {
     return AppSettings(
@@ -59,6 +64,7 @@ class AppSettings {
       temperature: temperature ?? this.temperature,
       defaultModelId: defaultModelId ?? this.defaultModelId,
       ollamaBaseUrl: ollamaBaseUrl ?? this.ollamaBaseUrl,
+      lmStudioBaseUrl: lmStudioBaseUrl ?? this.lmStudioBaseUrl,
       chatHistorySaveMode: chatHistorySaveMode ?? this.chatHistorySaveMode,
     );
   }
@@ -72,6 +78,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kTemperature = 'settings.temperature';
   static const _kDefaultModel = 'settings.defaultModelId';
   static const _kOllamaUrl = 'settings.ollamaBaseUrl';
+  static const _kLmStudioUrl = 'settings.lmStudioBaseUrl';
   static const _kChatHistorySaveMode = 'settings.chatHistorySaveMode';
 
   SettingsNotifier(this._prefs) : super(_load(_prefs));
@@ -82,6 +89,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         temperature: prefs.getDouble(_kTemperature) ?? 0.7,
         defaultModelId: prefs.getString(_kDefaultModel) ?? 'mock:default',
         ollamaBaseUrl: prefs.getString(_kOllamaUrl) ?? '',
+        lmStudioBaseUrl: LmStudioProvider.normalizeBaseUrl(
+          prefs.getString(_kLmStudioUrl) ?? LmStudioProvider.defaultBaseUrl,
+        ),
         chatHistorySaveMode: _parseChatHistorySaveMode(
           prefs.getString(_kChatHistorySaveMode),
         ),
@@ -121,6 +131,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final trimmed = url.trim();
     await _prefs.setString(_kOllamaUrl, trimmed);
     state = state.copyWith(ollamaBaseUrl: trimmed);
+  }
+
+  Future<void> setLmStudioBaseUrl(String url) async {
+    final normalized = LmStudioProvider.normalizeBaseUrl(url);
+    await _prefs.setString(_kLmStudioUrl, normalized);
+    state = state.copyWith(lmStudioBaseUrl: normalized);
   }
 
   Future<void> setChatHistorySaveMode(ChatHistorySaveMode mode) async {

@@ -27,6 +27,8 @@ void main() {
 
       expect(find.text('Chat History'), findsOneWidget);
       expect(find.text('When to save chat history'), findsOneWidget);
+      expect(find.textContaining('markdown (.md) files'), findsOneWidget);
+      expect(find.text('LM Studio (Local Server)'), findsOneWidget);
       expect(find.textContaining('Automatically'), findsOneWidget);
     });
 
