@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -74,12 +74,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -123,7 +123,7 @@ jobs:
           cp build/app/outputs/bundle/release/app-release.aab "dist/private-chat-hub-android-${RELEASE_TAG}.aab"
 
       - name: Upload Android release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-android
           if-no-files-found: error
@@ -140,7 +140,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -167,7 +167,7 @@ jobs:
           ditto -c -k --keepParent "$app_path" "dist/private-chat-hub-macos-${RELEASE_TAG}.zip"
 
       - name: Upload macOS release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-macos
           if-no-files-found: error
@@ -184,7 +184,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -207,7 +207,7 @@ jobs:
           Compress-Archive -Path (Join-Path $releaseDir '*') -DestinationPath $zipPath -Force
 
       - name: Upload Windows release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-windows
           if-no-files-found: error
@@ -224,7 +224,7 @@ jobs:
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
           merge-multiple: true
